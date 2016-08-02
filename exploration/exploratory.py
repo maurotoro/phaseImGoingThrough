@@ -46,9 +46,44 @@ def LPZ(signal, cutoff=40, order=3, sr=1893.9393939393942):
     z = (xF-xF.mean())/xF.std()
     return z
 
+
+def HLB(signal, sr=1893.9393939393942):
+    '''
+    Do the Hilbert transform of the data, and returns the analytic signal,
+    envelope, instantaneous phase, intantaneous frequency and analytic phase
+    of the signal.
+    
+    Params:
+    ------
+        signal: array
+            Signal to be analysed
+    Returns:
+    -------
+     ana_sig: array 
+         analytic signal
+     envelope: array
+         instantaneous amplitude
+     in_phase: array
+         instantaneous phase
+     ins_freq: array
+         instantaneous frequency
+     ana_phase: array
+         analytic phase
+    '''
+    ana_sig = hilbert(signal)
+    envelope = np.abs(ana_sig)
+    ins_phase = np.unwrap(np.angle(ana_sig))
+    insF = np.diff(ins_phase) * (sr/(2.0*np.pi))
+    ins_freq = np.hstack((0, insF))
+    ana_phase = np.arctan2(np.imag(ana_sig), np.real(ana_sig))
+    return ana_sig, envelope, ins_phase, ins_freq, ana_phase
+
+
 def loadZCB(rat, day):
     """
-    Function to load the behavioral data from Claudia 2006:
+    Function to load the behavioral data from Claudia 2006. Use RDC to be
+    called from rat_day_cells.py to get all the rats and their respective
+    sessions.
     
     DATASET:
     -------
@@ -61,16 +96,16 @@ def loadZCB(rat, day):
 
     params:
     ------
-        rat: string
+        rat : string
             Subject to look at.
         
-        day: string
+        day : string
             What session to look at
 
     returns:
     -------
-        rdata: struct 
-            filled of the analysis from Claudia, to be used or...
+        rdata : record 
+            Collection of the analysis from Claudia, to be used or...
     """
     fpa = "/Users/soyunkope/Documents/INDP2015/2016_S02/R02_ZachClau/"
     fpb = "phaseImGoingThrough/data/"
@@ -79,81 +114,50 @@ def loadZCB(rat, day):
     rdata = mdata["sniff"]
     return rdata
 
-RDC = {
-"f4" : {
-  "05_31_06b": ["Sc1_1.mat", "Sc1_2.mat", "Sc3_1.mat", ],
-  "06_01_06b": ["Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc4_1.mat", ],
-  "06_02_06b": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_4.mat",
-                "Sc1_5.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc2_4.mat",
-                "Sc2_5.mat", "Sc3_2.mat", "Sc3_3.mat", "Sc3_4.mat",
-                "Sc4_1.mat", "Sc4_2.mat", "Sc4_3.mat", "Sc4_4.mat", ],
-  "06_03_06b": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_5.mat",
-                "Sc1_6.mat", "Sc1_7.mat", "Sc2_1.mat", "Sc2_2.mat",
-                "Sc2_3.mat", "Sc2_4.mat", "Sc3_1.mat", "Sc3_2.mat",
-                "Sc3_3.mat", "Sc4_1.mat", "Sc4_2.mat", "Sc4_3.mat",
-                "Sc4_4.mat", "Sc4_5.mat", "Sc4_6.mat", ], },
-"f5" : {
-  "05_31_06b": ["Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc2_4.mat",
-                "Sc3_1.mat", "Sc4_1.mat", "Sc4_2.mat", "Sc4_3.mat",
-                "Sc6_1.mat", ],
-  "06_03_06b": ["Sc2_1.mat", "Sc3_1.mat", "Sc3_2.mat", "Sc4_1.mat",
-                "Sc4_2.mat", "Sc6_1.mat", "Sc6_2.mat", "Sc6_3.mat", ],
-  "06_05_06b": ["Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc3_1.mat",
-                "Sc3_2.mat", "Sc6_1.mat", "Sc6_2.mat", ],
-  "06_06_06b": ["Sc1_1.mat", "Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat",
-                "Sc3_1.mat", "Sc3_2.mat", "Sc3_3.mat", "Sc4_1.mat",
-                "Sc6_1.mat", "Sc6_2.mat", ], },
-"p9" : {
-  "11_18_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc3_1.mat", "Sc3_2.mat",
-               "Sc3_3.mat", "Sc4_1.mat", "Sc4_2.mat", "Sc4_3.mat",
-               "Sc4_4.mat", "Sc5_1.mat", "Sc5_2.mat", "Sc5_3.mat",
-               "Sc5_4.mat", "Sc6_1.mat", "Sc6_2.mat", "Sc6_3.mat", ],
-  "11_19_04": ["Sc3_1.mat", "Sc4_1.mat", "Sc4_2.mat", "Sc5_1.mat",
-               "Sc6_1.mat", "Sc6_2.mat", "Sc6_3.mat", ],
-  "11_20_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_4.mat",
-               "Sc1_5.mat", "Sc3_1.mat", "Sc4_1.mat", "Sc4_2.mat",
-               "Sc4_3.mat", "Sc5_1.mat", "Sc5_2.mat", ],
-  "11_22_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_4.mat",
-               "Sc3_1.mat", "Sc3_2.mat", "Sc5_1.mat", ],
-  "11_23_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_4.mat",
-               "Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc3_1.mat",
-               "Sc3_2.mat", "Sc3_3.mat", ],
-  "11_25_04": ["Sc1_1.mat", "Sc3_1.mat", "Sc5_1.mat", "Sc5_2.mat", ],
-  "11_26_04": ["Sc2_1.mat", "Sc4_1.mat", ],
-  "11_28_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_4.mat",
-               "Sc1_5.mat", "Sc1_6.mat", "Sc2_1.mat", "Sc3_1.mat",
-               "Sc4_1.mat", ],
-  "11_29_04": ["Sc1_1.mat", "Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat",
-               "Sc2_4.mat", "Sc3_1.mat", "Sc5_1.mat", ],
-  "11_30_04": ["Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc2_4.mat",
-               "Sc3_1.mat", "Sc3_2.mat", "Sc5_1.mat", "Sc5_2.mat", ],
-  "12_01_04": ["Sc2_1.mat", "Sc2_2.mat", "Sc2_3.mat", "Sc2_4.mat",
-               "Sc2_5.mat", "Sc3_1.mat", "Sc3_2.mat", "Sc5_1.mat",
-               "Sc5_2.mat", "Sc5_3.mat", "Sc5_4.mat", ],
-  "12_02_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc3_1.mat",
-               "Sc3_2.mat", ],
-  "12_03_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc1_3.mat", "Sc1_4.mat",
-               "Sc3_1.mat", "Sc4_1.mat", "Sc4_2.mat", ],
-  "12_06_04": ["Sc1_1.mat", "Sc1_2.mat", "Sc5_1.mat", "Sc5_2.mat", ],
-  "12_07_04": ["Sc2_1.mat", ], }
-}
 
-rd = loadZCB("f4", "05_31_06b")
+
+# Load RDC from rat_day_cells.py !!!
+rat = "f4"
+ses = "05_31_06b"
+rd = loadZCB(rat, ses)
+cells = RDC[rat][ses]
 t0 = rd.data.t0
 sr = rd.data.SampFreq
 dt = 1/sr
 L = len(rd.data.breath)
 dur = L/sr
 x_time = np.linspace(t0, dur+t0, num=L)
-trials_TS = rd.events.TrialStart
-odorON_TS = trials_TS+rd.events.OdorValveOn
-pokeIn_TS = trials_TS+rd.events.OdorPokeIn
-pokeOut_TS = trials_TS+rd.events.OdorPokeOut
-waterIn_TS = trials_TS+rd.events.WaterPokeIn
-reward_TS = trials_TS+rd.events.WaterValveOn
-odorValveID = rd.events.OdorValveID
-waterValveID = rd.events.WaterPokeID
-valTrials = np.array(np.nonzero(~np.isnan(sum((waterIn_TS, odorON_TS),
+breath = LPZ(rd.data.breath, cutoff=100, sr=sr)
+ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
+valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.WaterPokeIn,
+                                               rd.events.OdorValveOn),
                                               axis=0)))[0])
+trials_TS = rd.events.TrialStart[valTrials]
+odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
+pokeIn_TS = trials_TS+rd.events.OdorPokeIn[valTrials]
+pokeOut_TS = trials_TS+rd.events.OdorPokeOut[valTrials]
+waterIn_TS = trials_TS+rd.events.WaterPokeIn[valTrials]
+reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
+odorValveID = rd.events.OdorValveID[valTrials]
+waterValveID = rd.events.WaterPokeID[valTrials]
+odors = np.unique(odorValveID)
 
 
+for odors in odors:
+    pass
+
+
+
+"""
+# LOOKOUT! Seems that DZBP works better, use low=1 and high=30
+fig = plt.figure( figsize=(25,10))
+ax = fig.add_subplot(111)
+ax.plot(x_time, breath, 'k', lw=.5)
+ax.plot(trials_TS[valTrials], np.zeros_like(valTrials), 'ob', ms=9)
+ax.plot(pokeIn_TS[valTrials], np.zeros_like(valTrials), 'dg', ms=9)
+ax.plot(pokeOut_TS[valTrials], np.zeros_like(valTrials), 'dr', ms=9)
+ax.plot(odorON_TS[valTrials], np.zeros_like(valTrials), '*m', ms=13)
+ax.plot(waterIn_TS[valTrials], np.zeros_like(valTrials), 'sg', ms=9)
+ax.plot(reward_TS[valTrials], np.zeros_like(valTrials), '^g', ms=9)
+plt.tight_layout()
+"""
