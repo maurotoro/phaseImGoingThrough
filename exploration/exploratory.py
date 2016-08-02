@@ -6,12 +6,17 @@ Explorations on Claudia Fernstein PhD thesis,
 Load the behavioral data and create a plot that displays all the behavioral 
 data over a trial breathing frequency.
 
-@author: soyunkope
+
+Distributed AS IS, it's your fault now.
+If no licence on the containing folder, asume GPLv3+CRAPL
+@author: Mauro Toro
+@email: mauricio.toro@neuro.fchampalimaud.org
 """
 
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+from pyhht import emd
 import scipy.io as sio
 from scipy.signal import hilbert, butter, filtfilt
 from scipy.stats import linregress
@@ -127,7 +132,7 @@ dt = 1/sr
 L = len(rd.data.breath)
 dur = L/sr
 x_time = np.linspace(t0, dur+t0, num=L)
-breath = LPZ(rd.data.breath, cutoff=100, sr=sr)
+breath = DZBP(rd.data.breath, x_time, low=.5, high=60, sr=sr)
 ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
 valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.WaterPokeIn,
                                                rd.events.OdorValveOn),
@@ -142,22 +147,50 @@ odorValveID = rd.events.OdorValveID[valTrials]
 waterValveID = rd.events.WaterPokeID[valTrials]
 odors = np.unique(odorValveID)
 
+pokeIn_IX = np.array([np.nonzero(x_time > pokeIn_TS[i])[0].min()
+                      for i in range(len(valTrials))])
+odorOn_IX = np.array([np.nonzero(x_time > odorON_TS[i])[0].min()
+                      for i in range(len(valTrials))])
+pokeOut_IX = np.array([np.nonzero(x_time > pokeOut_TS[i])[0].min()
+                       for i in range(len(valTrials))])
 
-for odors in odors:
-    pass
+def firstInhDet(ana_phase, events):
+    """
+    Detect first inhalation after some events.
+    Goes trough ana_phase at events and depending on the phase at each event 
+    look for the next inhalation, if already on one, go to the next one, if on
+    exhalation, go to the next inhalation
+    
+    Returns
+    -------
+    array with the index ofinhalation start index for each event
+    """
+    finh = np.zeros_like(events)
+    for i in range(len(events)):
+        if ana_phase[events[i]] < -(np.pi/5)*4:
+            finh[i] = events[i]
+        else:
+            finh[i] = np.nonzero(ana_phase[events[i]:]<-(np.pi/5)*4)[0].min() \
+                      + events[i]
+    return finh
 
-
-
+def HHT(signal, n_imfs=2):
+    HH = emd.EmpiricalModeDecomposition(signal, n_imfs=n_imfs)
+    IMF = HH.decompose()
+    return IMF
+    
+def figurify(signal, IMF):
+    
 """
 # LOOKOUT! Seems that DZBP works better, use low=1 and high=30
 fig = plt.figure( figsize=(25,10))
-ax = fig.add_subplot(111)
-ax.plot(x_time, breath, 'k', lw=.5)
-ax.plot(trials_TS[valTrials], np.zeros_like(valTrials), 'ob', ms=9)
-ax.plot(pokeIn_TS[valTrials], np.zeros_like(valTrials), 'dg', ms=9)
-ax.plot(pokeOut_TS[valTrials], np.zeros_like(valTrials), 'dr', ms=9)
-ax.plot(odorON_TS[valTrials], np.zeros_like(valTrials), '*m', ms=13)
-ax.plot(waterIn_TS[valTrials], np.zeros_like(valTrials), 'sg', ms=9)
-ax.plot(reward_TS[valTrials], np.zeros_like(valTrials), '^g', ms=9)
+axa = fig.add_subplot(111)
+axa.plot(x_time, breath, 'k', lw=.5)
+axa.plot(trials_TS, np.zeros_like(valTrials), 'ob', ms=9)
+axa.plot(pokeIn_TS, np.zeros_like(valTrials), 'dg', ms=9)
+axa.plot(pokeOut_TS, np.zeros_like(valTrials), 'dr', ms=9)
+axa.plot(odorON_TS, np.zeros_like(valTrials), '*m', ms=13)
+axa.plot(waterIn_TS, np.zeros_like(valTrials), 'sg', ms=9)
+axa.plot(reward_TS, np.zeros_like(valTrials), '^g', ms=9)
 plt.tight_layout()
 """
