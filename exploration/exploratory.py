@@ -22,6 +22,7 @@ import scipy.io as sio
 from scipy.signal import hilbert, butter, filtfilt, gaussian
 from scipy.stats import linregress
 
+
 def DZBP(signal, time, low=0.1, high=30, order=3, sr=1893.9393939393942):
     """
     Detrend, signal - linearRegression
@@ -90,27 +91,27 @@ def loadZCB(rat, day):
     Function to load the behavioral data from Claudia 2006. Use RDC to be
     called from rat_day_cells.py to get all the rats and their respective
     sessions.
-    
+
     DATASET:
     -------
         {"f4": ["05_31_06b", "06_01_06b", "06_02_06b", "06_03_06b"],
         "f5": ["05_31_06b", "06_03_06b", "06_05_06b", "06_06_06b"],
-        "p9": ["11_18_04", "11_20_04", "11_23_04", "11_26_04", 
+        "p9": ["11_18_04", "11_20_04", "11_23_04", "11_26_04",
         "11_29_04", "12_01_04", "12_03_04", "12_07_04",
-        "11_19_04", "11_22_04", "11_25_04", "11_28_04", 
+        "11_19_04", "11_22_04", "11_25_04", "11_28_04",
         "11_30_04", "12_02_04", "12_06_04"]}
 
     params:
     ------
         rat : string
             Subject to look at.
-        
+
         day : string
             What session to look at
 
     returns:
     -------
-        rdata : record 
+        rdata : record
             Collection of the analysis from Claudia, to be used or...
     """
     fpa = "/Users/soyunkope/Documents/INDP2015/2016_S02/R02_ZachClau/"
@@ -121,13 +122,30 @@ def loadZCB(rat, day):
     return rdata
 
 
+def loadCellTS(rat, ses, neu):
+    """
+    """
+    fpa = "/Users/soyunkope/Documents/INDP2015/2016_S02/R02_ZachClau/"
+    fpb = "phaseImGoingThrough/data/"
+    fname = fpa+fpb+rat+'/'+ses+'/'+neu
+    nn = sio.loadmat(fname, struct_as_record=False, squeeze_me=True)
+    cell = nn['TS']/10000
+    return cell
+
+
 def firstInhDet(ana_phase, events):
     """
     Detect first inhalation after some events.
-    Goes trough ana_phase at events and depending on the phase at each event 
+    Goes trough ana_phase at events and depending on the phase at each event
     look for the next inhalation, if already on one, go to the next one, if on
     exhalation, go to the next inhalation
-    
+    Parameters
+    ----------
+    ana_phase : array
+        analytic phase of the signal
+
+    events : array
+        event index to look for.
     Returns
     -------
     array with the index ofinhalation start index for each event
@@ -137,17 +155,41 @@ def firstInhDet(ana_phase, events):
         if ana_phase[events[i]] < -(np.pi/5)*4:
             finh[i] = events[i]
         else:
-            finh[i] = np.nonzero(ana_phase[events[i]:]<-(np.pi/5)*4)[0].min() \
-                      + events[i]
+            finh[i] = np.nonzero(ana_phase[events[i]:] < \
+                                 -(np.pi/5)*4)[0].min() + events[i]
     return finh
 
 
 def HHT(signal, n_imfs=2, t=None, maxiter=200):
-    HH = emd.EmpiricalModeDecomposition(signal, t=t,n_imfs=n_imfs,
+    HH = emd.EmpiricalModeDecomposition(signal, t=t, n_imfs=n_imfs,
                                         maxiter=maxiter, nbsym=10)
     IMF = HH.decompose()
     return IMF
-    
+
+
+def normalize(signal, method="ZC"):
+    if method == "ZC":
+        res = (signal-np.mean(signal))/np.std(signal)
+    elif method == "FS":
+        mn = np.min(signal)
+        mx = np.max(signal)
+        res = (signal-mn)/(mx-mn)
+    return res
+
+
+def gaussFil(signal, sr="1893.9393939393942", freq=50):
+    """
+    Implements a lowpass Gaussian Filter over the signal with
+    cutoff frequency freq. Works...
+    Creates a gaussian window of the size of the cutoff frequency
+    and convolves the signal to it.
+    """
+    M = sr/freq
+    std = M/2
+    ker = gaussian(M, std)
+    res = np.convolve(signal, ker, mode='same')
+    return res
+
 
 def figurify(signal, IMF, fig, tit):
     cols = 'rgbm'
@@ -159,75 +201,96 @@ def figurify(signal, IMF, fig, tit):
     axa.set_title(tit, fontsize=15)
     return fig
 
-def normalize(signal, method="ZC"):
-    if method == "ZC":
-        res = (signal-np.mean(signal))/np.std(signal)
-    elif method == "FS":
-        mn = np.min(signal)
-        mx = np.max(signal)
-        res = (signal-mn)/(mx-mn)
-    return res
 
-def gaussFil(signal, sr="1893.9393939393942", freq=50):
-    """
-    Implements a lowpass Gaussian Filter over the signal with
-    cutoff frequency freq. Works...
-    Creates a gaussian window of the size of the cutoff frequency 
-    and convolves the signal to it.
-    """
-    M = sr/freq
-    std = M/2
-    ker = gaussian(M, std)
-    res = np.convolve(signal, ker, mode='same')
-    return res
+def rastFigs(tXo, x_time, cell, marks, fig, tit):
+    for trial, x in zip(tXo, range(len(tXo))):
+        rastify = [np.nonzero((cell > marks[1][0][trial[i]]) & \
+                   (cell < marks[1][1][trial[i]])) for i in range(len(trial))]
+        ts = [cell[np.array(rastify[i])] - x_time[marks[0][trial][i]]
+              for i in range(len(trial))]
+        ax = fig.add_subplot(len(tXo)+1, 1, x+1)
+        ylab = 'Odor-'+str(x+1)
+        for i in range(len(ts)):
+            ax.plot(ts[i], np.zeros_like(ts[i])+i, '.'+cols[x])
+            ax.set_ylabel(ylab)
+        ax.axis((-.504, .504, -.4, (len(ts)+.4)))
+        ax.plot(np.zeros(2), [-.4, (len(ts)+.4)], 'k', lw=1.5)
+    fig.suptitle(tit, fontsize=20)
+    return fig
+
+
+def rastify(tXo, cell, marks, x_time):
+    for trial, x in zip(tXo, range(len(tXo))):
+        rast = [np.nonzero((cell > marks[1][0][trial[i]]) & \
+                (cell < marks[1][1][trial[i]])) for i in range(len(trial))]
+        ts = [cell[np.array(rast[i])] - x_time[marks[0][trial][i]]
+              for i in range(len(trial))]
+    return ts
 
 # Load RDC from rat_day_cells.py !!!
-rat = "f5"
-ses = "06_03_06b"
 
-rd = loadZCB(rat, ses)
-cells = RDC[rat][ses]
-t0 = rd.data.t0
-sr = rd.data.SampFreq
-dt = 1/sr
-L = len(rd.data.breath)
-dur = L/sr
-x_time = np.linspace(t0, dur+t0, num=L)
-breath = DZBP(rd.data.breath, x_time, low=.5, high=40, sr=sr)
+# rat = "f4"
+# ses = "05_31_06b"
+ppOO = PdfPages('rat_ses_cell-t0_OdorOn.pdf')
+ppPI = PdfPages('rat_ses_cell-t0_PokeIn.pdf')
+for rat in sorted(RDC.keys()):
+    for ses in sorted(RDC[rat].keys()):
+        rd = loadZCB(rat, ses)
+        t0 = rd.data.t0
+        sr = rd.data.SampFreq
+        dt = 1/sr
+        L = len(rd.data.breath)
+        dur = L/sr
+        x_time = np.linspace(t0, dur+t0, num=L)
+        breath = gaussFil(rd.data.breath, sr=sr, freq=50)
+        breath = normalize(breath)
+        valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.WaterPokeIn,
+                                                       rd.events.OdorValveOn),
+                                                      axis=0)))[0])
+        trials_TS = rd.events.TrialStart[valTrials]
+        odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
+        pokeIn_TS = trials_TS+rd.events.OdorPokeIn[valTrials]
+        pokeOut_TS = trials_TS+rd.events.OdorPokeOut[valTrials]
+        waterIn_TS = trials_TS+rd.events.WaterPokeIn[valTrials]
+        reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
+        odorValveID = rd.events.OdorValveID[valTrials]
+        waterValveID = rd.events.WaterPokeID[valTrials]
+        odors = np.unique(odorValveID)
+        trialXodor = [np.nonzero(odorValveID == odor)[0] for odor in odors]
+        
+        pokeIn_IX = np.array([np.nonzero(x_time > pokeIn_TS[i])[0].min()
+                              for i in range(len(valTrials))])
+        odorOn_IX = np.array([np.nonzero(x_time > odorON_TS[i])[0].min()
+                              for i in range(len(valTrials))])
+        pokeOut_IX = np.array([np.nonzero(x_time > pokeOut_TS[i])[0].min()
+                               for i in range(len(valTrials))])
+        ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
+        fiPI = firstInhDet(ana_phase, pokeIn_IX)
+        fiOO = firstInhDet(ana_phase, odorOn_IX)
+        dT = .5
+        marksPI = [x_time[fiPI]-dT, x_time[fiPI]+dT]
+        marksOO = [x_time[fiOO]-dT, x_time[fiOO]+dT]
+        tL = [[fiOO, marksOO], [fiPI, marksPI]]
+        cols = 'rgbcmy'
+        for neu in RDC[rat][ses]:
+            cell = loadCellTS(rat, ses, neu)
+            titF = rat+'_'+ses+'_'+neu
+            print(titF)
+            for marks,pp in zip(tL, [ppOO, ppPI]):
+                fig = plt.figure(titF, figsize=(8.27, 11.69), dpi=100)
+                #ts = rastify(trialXodor, cell, tL, x_time)
+                f = rastFigs(trialXodor, x_time, cell, marks, fig, titF)
+                f.savefig(pp, format='pdf')
+                plt.close()
+ppOO.close()
+ppPI.close()
 
-valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.WaterPokeIn,
-                                               rd.events.OdorValveOn),
-                                              axis=0)))[0])
-trials_TS = rd.events.TrialStart[valTrials]
-odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
-pokeIn_TS = trials_TS+rd.events.OdorPokeIn[valTrials]
-pokeOut_TS = trials_TS+rd.events.OdorPokeOut[valTrials]
-waterIn_TS = trials_TS+rd.events.WaterPokeIn[valTrials]
-reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
-odorValveID = rd.events.OdorValveID[valTrials]
-waterValveID = rd.events.WaterPokeID[valTrials]
-odors = np.unique(odorValveID)
-
-pokeIn_IX = np.array([np.nonzero(x_time > pokeIn_TS[i])[0].min()
-                      for i in range(len(valTrials))])
-odorOn_IX = np.array([np.nonzero(x_time > odorON_TS[i])[0].min()
-                      for i in range(len(valTrials))])
-pokeOut_IX = np.array([np.nonzero(x_time > pokeOut_TS[i])[0].min()
-                       for i in range(len(valTrials))])
-marks = [pokeIn_IX-int(sr), pokeOut_IX+int(sr)]
-
-
-sampB = np.array([breath[marks[0][i]:marks[1][i]] for i in range(valTrials.size)])
-sampT = np.array([x_time[marks[0][i]:marks[1][i]] for i in range(valTrials.size)])
-# ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
-ana_phase = np.array([HLB(sampB[i], sr=sr) for i in range(valTrials.size)])[:,4]
-
+     
 """
 # Looking to use IMF, fuck me, and my dreams....
 for rat in RDC.keys():
     for ses in RDC[rat].keys():
         rd = loadZCB(rat, ses)
-        cells = RDC[rat][ses]
         t0 = rd.data.t0
         sr = rd.data.SampFreq
         dt = 1/sr
@@ -265,7 +328,7 @@ for rat in RDC.keys():
         tit = rat+'-'+ses
         pp = PdfPages(tit+'.pdf')
         for i in range(len(pokeIn_IX)):
-            tit = tit = rat+'-'+ses+'-'+str(i)
+            tit = rat+'-'+ses+'-'+str(i)
             print(tit)
             fig = plt.figure(tit, figsize=(8.27, 11.69), dpi=100)
             f = figurify(sampB[i], IMF[i], fig, tit)
