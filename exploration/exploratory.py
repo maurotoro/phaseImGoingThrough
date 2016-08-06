@@ -255,26 +255,7 @@ def rastify(tXo, cell, marks, x_time):
 ppOO = PdfPages('rat_ses_cell-t0_OdorOn.pdf')
 ppPI = PdfPages('rat_ses_cell-t0_PokeIn.pdf')
 for rat in sorted(RDC.keys()):
-    if rat == "f4":
-        continue
     for ses in sorted(RDC[rat].keys()):
-        if rat == "f5":        
-            if ses == '05_31_06b':
-                continue
-            if ses == '06_03_06b':
-                continue
-            if ses == '06_05_06b':
-                continue
-            if ses == '06_06_06b':
-                continue
-            if ses == '06_07_06b':
-                continue
-            if ses == '06_08_06b':
-                continue
-            if ses == '06_09_06b':
-                continue
-            if ses == '06_11_06b':
-                continue
         rd = loadZCB(rat, ses)
         t0 = rd.data.t0
         sr = rd.data.SampFreq
@@ -326,7 +307,15 @@ for rat in sorted(RDC.keys()):
 ppOO.close()
 ppPI.close()
 
-## OJO pages arround session F5_ 06_11_06b - 06_13_06b, may have problems
+"""
+TODO organizedly look for neurons that look interesting and save them apart
+     Convolve the spike trains with subsampled breathing+EMD, that might look 
+     better and more interesting....also, point process intointo oscilation to
+     look for synchronicity.
+     Calculate the vector strenght and spread of the locked neurons,
+         compare to other 1000 inhalations outside the odor poke.
+             Using high SNR breaths, to be sure.
+"""
      
 """
 # Looking to use IMF, fuck me, and my dreams....
