@@ -2,7 +2,7 @@
 """
 Created on Fri Jul 29 14:50:16 2016
 
-Explorations on Claudia Fernstein PhD thesis,
+Explorations on Claudia Feierstein PhD thesis,
 Load the behavioral data and create a plot that displays all the behavioral 
 data over a trial breathing frequency.
 
@@ -60,10 +60,12 @@ def HLB(signal, sr=1893.9393939393942):
     envelope, instantaneous phase, instantaneous frequency and analytic phase
     of the signal.
     TODO: also use the angular freq? (Hurtado Rubchinsky & Sigvardt 2004)
+
     Params:
     ------
         signal: array
             Signal to be analysed
+
     Returns:
     -------
      ana_sig: array
@@ -92,16 +94,7 @@ def loadZCB(rat, day):
     called from rat_day_cells.py to get all the rats and their respective
     sessions.
 
-    DATASET:
-    -------
-        {"f4": ["05_31_06b", "06_01_06b", "06_02_06b", "06_03_06b"],
-        "f5": ["05_31_06b", "06_03_06b", "06_05_06b", "06_06_06b"],
-        "p9": ["11_18_04", "11_20_04", "11_23_04", "11_26_04",
-        "11_29_04", "12_01_04", "12_03_04", "12_07_04",
-        "11_19_04", "11_22_04", "11_25_04", "11_28_04",
-        "11_30_04", "12_02_04", "12_06_04"]}
-
-    params:
+    Params:
     ------
         rat : string
             Subject to look at.
@@ -124,6 +117,21 @@ def loadZCB(rat, day):
 
 def loadCellTS(rat, ses, neu):
     """
+    Loads the spike trains from a particular cell from a session of a rat
+    Use RDC on rat_day_cells to get the rat, ses and neu strings!
+    Parameters
+    ----------
+    rat : string
+        which rat to look at
+        
+    ses : string
+        which sesion to look at
+        
+    neu : string
+        which neuron to look at
+    
+    Returns
+    -------
     """
     fpa = "/Users/soyunkope/Documents/INDP2015/2016_S02/R02_ZachClau/"
     fpb = "phaseImGoingThrough/data/"
@@ -137,8 +145,9 @@ def firstInhDet(ana_phase, events):
     """
     Detect first inhalation after some events.
     Goes trough ana_phase at events and depending on the phase at each event
-    look for the next inhalation, if already on one, go to the next one, if on
-    exhalation, go to the next inhalation
+    look for the next inhalation, if already on one, go to the next one if
+    more than 1/5 of the inhalation has , if on exhalation look for the next
+    inhalation
     Parameters
     ----------
     ana_phase : array
@@ -161,6 +170,10 @@ def firstInhDet(ana_phase, events):
 
 
 def HHT(signal, n_imfs=2, t=None, maxiter=200):
+    """
+    Use and abuse the EMD from jaidevd, still not so useful, may need
+    more tricks to work
+    """
     HH = emd.EmpiricalModeDecomposition(signal, t=t, n_imfs=n_imfs,
                                         maxiter=maxiter, nbsym=10)
     IMF = HH.decompose()
@@ -192,6 +205,9 @@ def gaussFil(signal, sr="1893.9393939393942", freq=50):
 
 
 def figurify(signal, IMF, fig, tit):
+    """
+    Simple plots, the EMD on top 3 max + res; the signal on bottom
+    """
     cols = 'rgbm'
     axa = fig.add_subplot(2, 1, 1)
     axb = fig.add_subplot(2, 1, 2, sharex=axa)
@@ -203,6 +219,11 @@ def figurify(signal, IMF, fig, tit):
 
 
 def rastFigs(tXo, x_time, cell, marks, fig, tit):
+    """
+    Hardcore simple rasters for the dataset.
+    Take the trial divided by odors, tXo, look at the marks from timestams
+    marks[1]
+    """
     for trial, x in zip(tXo, range(len(tXo))):
         rastify = [np.nonzero((cell > marks[1][0][trial[i]]) & \
                    (cell < marks[1][1][trial[i]])) for i in range(len(trial))]
@@ -234,7 +255,26 @@ def rastify(tXo, cell, marks, x_time):
 ppOO = PdfPages('rat_ses_cell-t0_OdorOn.pdf')
 ppPI = PdfPages('rat_ses_cell-t0_PokeIn.pdf')
 for rat in sorted(RDC.keys()):
+    if rat == "f4":
+        continue
     for ses in sorted(RDC[rat].keys()):
+        if rat == "f5":        
+            if ses == '05_31_06b':
+                continue
+            if ses == '06_03_06b':
+                continue
+            if ses == '06_05_06b':
+                continue
+            if ses == '06_06_06b':
+                continue
+            if ses == '06_07_06b':
+                continue
+            if ses == '06_08_06b':
+                continue
+            if ses == '06_09_06b':
+                continue
+            if ses == '06_11_06b':
+                continue
         rd = loadZCB(rat, ses)
         t0 = rd.data.t0
         sr = rd.data.SampFreq
@@ -244,8 +284,9 @@ for rat in sorted(RDC.keys()):
         x_time = np.linspace(t0, dur+t0, num=L)
         breath = gaussFil(rd.data.breath, sr=sr, freq=50)
         breath = normalize(breath)
-        valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.WaterPokeIn,
-                                                       rd.events.OdorValveOn),
+        valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.OdorPokeIn,
+                                                       rd.events.OdorValveOn,
+                                                       rd.events.WaterPokeIn,),
                                                       axis=0)))[0])
         trials_TS = rd.events.TrialStart[valTrials]
         odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
@@ -285,6 +326,7 @@ for rat in sorted(RDC.keys()):
 ppOO.close()
 ppPI.close()
 
+## OJO pages arround session F5_ 06_11_06b - 06_13_06b, may have problems
      
 """
 # Looking to use IMF, fuck me, and my dreams....
