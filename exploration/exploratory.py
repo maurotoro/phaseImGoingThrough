@@ -169,6 +169,26 @@ def firstInhDet(ana_phase, events):
     return finh
 
 
+def markify(events_TS, x_time, ana_phase, frac=5, dT=.5):
+    """
+        Creates marks for first inhalation given a event timestamp. Gives the
+        first inhalations indices, but also the timestamps for +-dT seconds
+        from that inhalation to ask about that to the spike trains.
+        Asumes that if the event ocurred in less than pi/frac of the
+        inhalation, that is the first inhalation.
+        TODO: Try to speed up procces by starting each time closer to event..
+    """
+    events = np.array([np.nonzero(x_time >= ev)[0].min() for ev in events_TS])
+    finh = np.zeros_like(events)
+    for i in range(len(events)):
+        if ana_phase[events[i]] < -(np.pi/frac)*(frac-1):
+            finh[i] = events[i]
+        else:
+            finh[i] = np.nonzero(ana_phase[events[i]:] < \
+                                 -(np.pi/frac)*(frac-1))[0].min() + events[i]
+    marks = np.array([x_time[finh]-dT, x_time[finh]+dT])
+    return events, [finh, marks]
+
 def HHT(signal, n_imfs=2, t=None, maxiter=200):
     """
     Use and abuse the EMD from jaidevd, still not so useful, may need
@@ -190,7 +210,7 @@ def normalize(signal, method="ZC"):
     return res
 
 
-def gaussFil(signal, sr="1893.9393939393942", freq=50):
+def gaussFil(signal, sr=1893.9393939393942, freq=50):
     """
     Implements a lowpass Gaussian Filter over the signal with
     cutoff frequency freq. Works...
@@ -229,10 +249,10 @@ def rastFigs(tXo, x_time, cell, marks, fig, tit):
                    (cell < marks[1][1][trial[i]])) for i in range(len(trial))]
         ts = [cell[np.array(rastify[i])] - x_time[marks[0][trial][i]]
               for i in range(len(trial))]
-        ax = fig.add_subplot(len(tXo)+1, 1, x+1)
+        ax = fig.add_subplot(len(tXo)+1, 4, x+1)
         ylab = 'Odor-'+str(x+1)
         for i in range(len(ts)):
-            ax.plot(ts[i], np.zeros_like(ts[i])+i, '.'+cols[x])
+            ax.plot(ts[i], np.zeros_like(ts[i])+i, '|'+cols[x])
             ax.set_ylabel(ylab)
         ax.axis((-.504, .504, -.4, (len(ts)+.4)))
         ax.plot(np.zeros(2), [-.4, (len(ts)+.4)], 'k', lw=1.5)
@@ -248,14 +268,34 @@ def rastify(tXo, cell, marks, x_time):
               for i in range(len(trial))]
     return ts
 
+
+def rastrix(ts, dT=.5, res=.002):
+    """
+    Look for spikes arround each odor presentation.
+    Gives and array of odors size, each odor has as many rows as presentations
+    and as many columns as spikes on that presentation
+    """
+    raster = []
+    a = np.linspace(-dT, dT, num=1/res)
+    for trial in ts:
+        rast = np.zeros((len(trial), len(a)))
+        rNX = [[np.nonzero(a >= i)[0].min() for i in j[0]] for j in ts]
+        for row in range(len(rast)):
+            rast[row][rNX[row]] = 1
+        raster.append(rast)
+    return raster
+
 # Load RDC from rat_day_cells.py !!!
 
 # rat = "f4"
 # ses = "05_31_06b"
-ppOO = PdfPages('rat_ses_cell-t0_OdorOn.pdf')
-ppPI = PdfPages('rat_ses_cell-t0_PokeIn.pdf')
+
+ppA = PdfPages('rat_ses_cell-Pi_Oo_3sPi.pdf')
+data = {}
 for rat in sorted(RDC.keys()):
+    data[rat] = {}
     for ses in sorted(RDC[rat].keys()):
+        data[rat][ses] = {}
         rd = loadZCB(rat, ses)
         t0 = rd.data.t0
         sr = rd.data.SampFreq
@@ -270,42 +310,76 @@ for rat in sorted(RDC.keys()):
                                                        rd.events.WaterPokeIn,),
                                                       axis=0)))[0])
         trials_TS = rd.events.TrialStart[valTrials]
-        odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
         pokeIn_TS = trials_TS+rd.events.OdorPokeIn[valTrials]
+        odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
+        odorValveID = rd.events.OdorValveID[valTrials]
         pokeOut_TS = trials_TS+rd.events.OdorPokeOut[valTrials]
         waterIn_TS = trials_TS+rd.events.WaterPokeIn[valTrials]
-        reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
-        odorValveID = rd.events.OdorValveID[valTrials]
         waterValveID = rd.events.WaterPokeID[valTrials]
+        reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
+        waterOut_TS = trials_TS+rd.events.WaterPokeOut[valTrials]
         odors = np.unique(odorValveID)
         trialXodor = [np.nonzero(odorValveID == odor)[0] for odor in odors]
-        
-        pokeIn_IX = np.array([np.nonzero(x_time > pokeIn_TS[i])[0].min()
-                              for i in range(len(valTrials))])
-        odorOn_IX = np.array([np.nonzero(x_time > odorON_TS[i])[0].min()
-                              for i in range(len(valTrials))])
-        pokeOut_IX = np.array([np.nonzero(x_time > pokeOut_TS[i])[0].min()
-                               for i in range(len(valTrials))])
         ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
-        fiPI = firstInhDet(ana_phase, pokeIn_IX)
-        fiOO = firstInhDet(ana_phase, odorOn_IX)
-        dT = .5
-        marksPI = [x_time[fiPI]-dT, x_time[fiPI]+dT]
-        marksOO = [x_time[fiOO]-dT, x_time[fiOO]+dT]
-        tL = [[fiOO, marksOO], [fiPI, marksPI]]
+        dT = .5 # sec arround first inhalation for the events
+        frac = 6 # fraction of pi to asume first inhalation
+        tBPi = 3 # Time before poke to use
+        marksPI = markify(pokeIn_TS, x_time, ana_phase, frac=frac, dT=dT)
+        marksOO = markify(odorON_TS, x_time, ana_phase, frac=frac, dT=dT)
+        marksPO = markify(pokeOut_TS, x_time, ana_phase, frac=frac, dT=dT)
+        marksWI = markify(waterIn_TS, x_time, ana_phase, frac=frac, dT=dT)
+        
+        marksBP = markify(pokeIn_TS-tBPi, x_time, ana_phase, frac=frac, dT=dT)
+        tL = [marksPI[1], marksOO[1], marksPO[1], marksBP[1]] # marksWI[1],  
+        # Create data Structure:
+        data[rat][ses]['data'] = {'time_start': t0, 'samp_rate': sr,
+                                  'respiration': breath}
+        events_TS = {'trials_start': trials_TS, 'poke_in': pokeIn_TS,
+                     'odor_on': odorON_TS, 'odor_id': odorValveID,
+                     'poke_out': pokeOut_TS, 'water_in': waterIn_TS,
+                     'water_id': waterValveID, 'reward': reward_TS}
+        marks = {'poke_in': marksPI, 'odor_on': marksOO, 'poke_out': marksPO,
+                 'water_in': marksWI}
+        data[rat][ses]['events_timestamps'] = events_TS
+        data[rat][ses]['events_first_inh'] = marks
         cols = 'rgbcmy'
+        tits = ['Poke in', 'Odor on', 'Poke Out',  '3SBPi']
         for neu in RDC[rat][ses]:
             cell = loadCellTS(rat, ses, neu)
-            titF = rat+'_'+ses+'_'+neu
+            titF = rat+' '+ses+' '+neu
             print(titF)
-            for marks,pp in zip(tL, [ppOO, ppPI]):
-                fig = plt.figure(titF, figsize=(8.27, 11.69), dpi=100)
-                #ts = rastify(trialXodor, cell, tL, x_time)
-                f = rastFigs(trialXodor, x_time, cell, marks, fig, titF)
-                f.savefig(pp, format='pdf')
-                plt.close()
-ppOO.close()
-ppPI.close()
+            fig = plt.figure(titF, figsize=(15.69, 8.27), dpi=100)
+            res = .002
+            for marks,y in zip(tL, range(len(tL))):
+                ts = rastify(trialXodor, cell, marks, x_time, dT=dT, res=res)
+                raster = rastrix(ts, dT=.5, res=.0001)
+                for x in range(len(ts)):
+                    ax = fig.add_subplot(len(ts), len(tL), 1+(x*len(tL))+y)
+                    ylab = 'Odor-'+str(x+1)
+                    ax.imshow(-ts[x], cmap='gray', aspect='auto',
+                           interpolation='none', origin='lower',
+                           shape=shape(ts[x]))
+                    ax.set_axis_bgcolor(cols[x])
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    if x+1 == len(ts):
+                        ax.set_xticks([-.5, -.25, 0, .25, .5])
+                    if x == 0:
+                        ax.set_title(tits[y])
+                    if y == 0:
+                        ax.set_yticks(np.linspace(0,len(ts[x]), num=5, dtype='int'))
+                    if y == len(tL)-1:
+                        ax.set_ylabel(ylab)
+                        ax.yaxis.set_label_position('right')
+                    ax.axis((-.504, .504, -.4, (len(ts[x])+.4)))
+                    ax.plot(np.zeros(2), [-.4, (len(ts[x])+.4)], 'k', lw=1.5)
+            fig.suptitle(titF, fontsize=14)
+            fig.savefig(ppA, format='pdf')
+            plt.close()
+ppA.close()
+
+
+
 
 """
 TODO organizedly look for neurons that look interesting and save them apart
@@ -366,4 +440,149 @@ for rat in RDC.keys():
             f.savefig(pp, format='pdf')
             plt.close()
         pp.close()
+"""
+"""
+# First plots 
+ppOO = PdfPages('rat_ses_cell-t0_OdorOn.pdf')
+ppPI = PdfPages('rat_ses_cell-t0_PokeIn.pdf')
+for rat in sorted(RDC.keys()):
+    for ses in sorted(RDC[rat].keys()):
+        rd = loadZCB(rat, ses)
+        t0 = rd.data.t0
+        sr = rd.data.SampFreq
+        dt = 1/sr
+        L = len(rd.data.breath)
+        dur = L/sr
+        x_time = np.linspace(t0, dur+t0, num=L)
+        breath = gaussFil(rd.data.breath, sr=sr, freq=50)
+        breath = normalize(breath)
+        valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.OdorPokeIn,
+                                                       rd.events.OdorValveOn,
+                                                       rd.events.WaterPokeIn,),
+                                                      axis=0)))[0])
+        trials_TS = rd.events.TrialStart[valTrials]
+        odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
+        pokeIn_TS = trials_TS+rd.events.OdorPokeIn[valTrials]
+        pokeOut_TS = trials_TS+rd.events.OdorPokeOut[valTrials]
+        waterIn_TS = trials_TS+rd.events.WaterPokeIn[valTrials]
+        reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
+        odorValveID = rd.events.OdorValveID[valTrials]
+        waterValveID = rd.events.WaterPokeID[valTrials]
+        odors = np.unique(odorValveID)
+        trialXodor = [np.nonzero(odorValveID == odor)[0] for odor in odors]
+        
+        pokeIn_IX = np.array([np.nonzero(x_time > pokeIn_TS[i])[0].min()
+                              for i in range(len(valTrials))])
+        odorOn_IX = np.array([np.nonzero(x_time > odorON_TS[i])[0].min()
+                              for i in range(len(valTrials))])
+        pokeOut_IX = np.array([np.nonzero(x_time > pokeOut_TS[i])[0].min()
+                               for i in range(len(valTrials))])
+        ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
+        fiPI = firstInhDet(ana_phase, pokeIn_IX)
+        fiOO = firstInhDet(ana_phase, odorOn_IX)
+        dT = .5
+        marksPI = [x_time[fiPI]-dT, x_time[fiPI]+dT]
+        marksOO = [x_time[fiOO]-dT, x_time[fiOO]+dT]
+        tL = [[fiOO, marksOO], [fiPI, marksPI]]
+        cols = 'rgbcmy'
+        for neu in RDC[rat][ses]:
+            cell = loadCellTS(rat, ses, neu)
+            titF = rat+'_'+ses+'_'+neu
+            print(titF)
+            for marks,pp in zip(tL, [ppOO, ppPI]):
+                fig = plt.figure(titF, figsize=(8.27, 11.69), dpi=100)
+                #ts = rastify(trialXodor, cell, tL, x_time)
+                f = rastFigs(trialXodor, x_time, cell, marks, fig, titF)
+                f.savefig(pp, format='pdf')
+                plt.close()
+ppOO.close()
+ppPI.close()
+"""
+
+"""
+# Creates raster by behavioral responses.
+ppA = PdfPages('rat_ses_cell-Pi_Oo_3sPi.pdf')
+data = {}
+for rat in sorted(RDC.keys()):
+    data[rat] = {}
+    for ses in sorted(RDC[rat].keys()):
+        data[rat][ses] = {}
+        rd = loadZCB(rat, ses)
+        t0 = rd.data.t0
+        sr = rd.data.SampFreq
+        dt = 1/sr
+        L = len(rd.data.breath)
+        dur = L/sr
+        x_time = np.linspace(t0, dur+t0, num=L)
+        breath = gaussFil(rd.data.breath, sr=sr, freq=50)
+        breath = normalize(breath)
+        valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.OdorPokeIn,
+                                                       rd.events.OdorValveOn,
+                                                       rd.events.WaterPokeIn,),
+                                                      axis=0)))[0])
+        trials_TS = rd.events.TrialStart[valTrials]
+        pokeIn_TS = trials_TS+rd.events.OdorPokeIn[valTrials]
+        odorON_TS = trials_TS+rd.events.OdorValveOn[valTrials]
+        odorValveID = rd.events.OdorValveID[valTrials]
+        pokeOut_TS = trials_TS+rd.events.OdorPokeOut[valTrials]
+        waterIn_TS = trials_TS+rd.events.WaterPokeIn[valTrials]
+        waterValveID = rd.events.WaterPokeID[valTrials]
+        reward_TS = trials_TS+rd.events.WaterValveOn[valTrials]
+        waterOut_TS = trials_TS+rd.events.WaterPokeOut[valTrials]
+        odors = np.unique(odorValveID)
+        trialXodor = [np.nonzero(odorValveID == odor)[0] for odor in odors]
+        ana_sig, envelope, ins_phase, ins_freq, ana_phase = HLB(breath, sr=sr)
+        dT = .5 # sec arround first inhalation for the events
+        frac = 5 # fraction of pi to asume first inhalation
+        tBPi = 3 # Time before poke to use
+        marksPI = markify(pokeIn_TS, x_time, ana_phase, frac=5, dT=dT)
+        marksOO = markify(odorON_TS, x_time, ana_phase, frac=5, dT=dT)
+        marksPO = markify(pokeOut_TS, x_time, ana_phase, frac=5, dT=dT)
+        marksWI = markify(waterIn_TS, x_time, ana_phase, frac=5, dT=dT)
+        
+        marksBP = markify(pokeIn_TS-tBPi, x_time, ana_phase, frac=5, dT=dT)
+        tL = [marksPI[1], marksOO[1], marksPO[1], marksBP[1]] # marksWI[1],  
+        # Create data Structure:
+        data[rat][ses]['data'] = {'time_start': t0, 'samp_rate': sr,
+                                  'respiration': breath}
+        events_TS = {'trials_start': trials_TS, 'poke_in': pokeIn_TS,
+                     'odor_on': odorON_TS, 'odor_id': odorValveID,
+                     'poke_out': pokeOut_TS, 'water_in': waterIn_TS,
+                     'water_id': waterValveID, 'reward': reward_TS}
+        marks = {'poke_in': marksPI, 'odor_on': marksOO, 'poke_out': marksPO,
+                 'water_in': marksWI}
+        data[rat][ses]['events_timestamps'] = events_TS
+        data[rat][ses]['events_first_inh'] = marks
+        cols = 'rgbcmy'
+        for neu in RDC[rat][ses]:
+            cell = loadCellTS(rat, ses, neu)
+            titF = rat+' '+ses+' '+neu
+            print(titF)
+            fig = plt.figure(titF, figsize=(15.69, 8.27), dpi=100)
+            tits = ['Poke in', 'Odor on', 'Poke Out',  '3SBPi']
+            for marks,y in zip(tL, range(len(tL))):
+                ts = rastify(trialXodor, cell, marks, x_time)
+                for x in range(len(ts)):
+                    ax = fig.add_subplot(len(ts), len(tL), 1+(x*len(tL))+y)
+                    ylab = 'Odor-'+str(x+1)
+                    for n in range(len(ts[x])):
+                        ax.plot(ts[x][n], np.zeros_like(ts[x][n])+n,
+                                '.'+cols[x], ms=2)
+                    ax.set_xticks([])
+                    ax.set_yticks([])
+                    if x+1 == len(ts):
+                        ax.set_xticks([-.5, -.25, 0, .25, .5])
+                    if x == 0:
+                        ax.set_title(tits[y])
+                    if y == 0:
+                        ax.set_yticks(np.linspace(0,len(ts[x]), num=5, dtype='int'))
+                    if y == len(tL)-1:
+                        ax.set_ylabel(ylab)
+                        ax.yaxis.set_label_position('right')
+                    ax.axis((-.504, .504, -.4, (len(ts[x])+.4)))
+                    ax.plot(np.zeros(2), [-.4, (len(ts[x])+.4)], 'k', lw=1.5)
+            fig.suptitle(titF, fontsize=14)
+            fig.savefig(ppA, format='pdf')
+            plt.close()
+ppA.close()
 """
