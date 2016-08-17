@@ -116,6 +116,20 @@ def normalize(signal, method="ZS"):
     return res
 
 
+def gaussFil(signal, sr=1893.9393939393942, freq=50):
+    """
+    Implements a lowpass Gaussian Filter over the signal with
+    cutoff frequency freq. Works...
+    Creates a gaussian window of the size of the cutoff frequency
+    and convolves the signal to it.
+    """
+    M = sr/freq
+    std = M/2
+    ker = gaussian(M, std)
+    res = np.convolve(signal, ker, mode='same')
+    return res
+
+
 def rastify(tXo, cell, marks, x_time):
     for trial, x in zip(tXo, range(len(tXo))):
         rast = [np.nonzero((cell > marks[1][0][trial[i]]) & \
@@ -162,61 +176,171 @@ def loadData(rat, ses, file='data_11.AUG.16.h5'):
 
 
 def inhDetection(breath, events, x_time, sr=1893.9393939393942,
-                 low=1, high=30, order=3, norm='ZS', frac=5, ratio=1):
+                 low=1, high=30, order=3, nmeth='ZS', frac=5, ratio=1):
     """
     Detects first inhalation after timestamps. Gives the detrended
     bandpassed and normalized breathing sec/ratio arround the event,
     the analytic phase of the breathing for further analysis, and
-    the indices of used for everything.
+    the indices used for everything in breath scale.
+    If the odor was presented during the bregining of the inhalation,
+    consider that as the first inhalation. 
+    
+    Parameters
+    ----------
+    
+    breath : array, one dimension
+        Breathing frequency to analyze
+
+    events : array, one dimension
+        Timestamps of the events of interet
+
+    x_time : array, one dimension
+        Sesion time dimension
+    
+    sr : float
+        Sampling rate of the breathing frequency
+    
+    low : float
+        Lower bound for the bandpass filter
+
+    high : float
+        Higher bound for the bandpass filter
+
+    order : int
+        Order of the bandpass filter
+
+    nmeth : string
+        Type of normalization to use after the bandpass
+
+    frac : float
+        (frac-1)*pi/frac defines the begining of the inhalation
+
+    ratio : float
+        How much indices around the event to analyze,
+        (ratio 1) = (1 sec)
+    
+    Returns:
+    -------
+    
+    
     """
     ev0 = int(sr/ratio)
-    ev_ndx = np.array([(x_time >= i).nonzero()[0].min() for i in events])
+    dt = 1/sr
+    t0 = x_time[0]
+    ev_ndx = np.array(((events-t0)/dt).astype(int))
     pe_ndx = np.array([ev_ndx-ev0, ev_ndx+ev0])
     sniff = np.array([breath[i:j] for i, j in zip(pe_ndx[0], pe_ndx[1])])
-    resps = np.array([DBPN(sn, low=low, high=high, order=order, sr=sr, norm=norm)
-                      for sn in sniff])
+    resps = np.array([DBPN(sn, low=low, high=high, order=order, sr=sr,
+                           norm=nmeth) for sn in sniff])
     ana_sig = hilbert(resps)
-    ana_phase = np.arctan2(ana_sig.imag, ana_sig.real) 
+    ana_phase = np.arctan2(ana_sig.imag, ana_sig.real)
     finh = np.zeros_like(ev_ndx)
+    inhs = [None]*len(ev_ndx)
     thresh = -(np.pi/frac)*(frac-1)
     for i in range(len(ev_ndx)):
-        print(i)
         if ana_phase[i][ev0] < thresh:
-            finh[i] = ev0
+            finh[i] = (ana_phase[i][:ev0] < thresh).nonzero()[0].max()
         else:
             finh[i] = (ana_phase[i][ev0:] < thresh).nonzero()[0].min()+ev0
-    return resps, ana_phase, finh, [ev_ndx, pe_ndx]
+        inhs[i] = np.array((np.hstack((0, np.diff(ana_phase[i]))) < -6).nonzero()[0])
+    return resps, ana_phase, finh, inhs, [ev_ndx, pe_ndx]
+
+def periStimCycleDet(breath, finh, inhs, marks, sr):
+    ba = [(inhs < finh[i]).nonzero()[0].max(),
+                              (inhs > finh[i]).nonzero()[0].min()]
+    cycles[i] = np.array([inhs[ba[0]], finh[i], inhs[ba[1]]])
+    pass
+
+def main_TEST():
+    file='data_11.AUG.16.h5'
+    plt.ioff()
+    #expe = {}
+    for rat in sorted(RDC.keys()):
+        #expe[rat] = {}
+        for ses in sorted(RDC[rat]):
+            #expe[rat][ses] = {}
+            dataset = loadData(rat, ses, file=file)
+            etsN = ['poke_in', 'odor_on', 'poke_out', '1.8SBPi']
+            x_time = dataset['data']['x_time']
+            t0 = x_time[0]
+            breath = dataset['data']['respiration']
+            sr = dataset['data']['samp_rate']
+            odors = dataset['data']['odor_id']
+            val = len(etsN)
+            for x in range(val):
+                if x == val-1:
+                    events = dataset['events_ts']['poke_in']
+                    events = events-1.8
+                else:
+                    events = dataset['events_ts'][etsN[x]]
+                resps, ana_phase, finh, inhs, marks = \
+                    inhDetection(breath, events, x_time, sr=sr, ratio=.5)
+                #expe[rat][ses][etsN[x]] = {'sniffs': resps, 'phase': ana_phase,
+                #                            'first_inhalation': finh,
+                #                            'marks': marks}
+                print(rat, ses, etsN[x], ': done')
 
 
-file='data_10.AUG.16.h5'
-plt.ioff()
-expe = {}
-for rat in sorted(RDC.keys()):
-    expe[rat]={}
-    for ses in sorted(RDC[rat]):
-        expe[rat][ses]={}
-        dataset = loadData(rat, ses, file=file)
-        etsN = ['poke_in', 'odor_on', 'poke_out', 'water_in', '1SBPi'] 
-        x_time = dataset['data']['x_time']
-        breath = dataset['data']['respiration']
-        sr = dataset['data']['samp_rate']
-        fTit = rat+' '+ses
-        #fig = plt.figure(fTit, figsize=(20, 7))
-        val = len(etsN)
-        axs = [fig.add_subplot(1, val, i+1) for i in range(val)]
-        cols = 'rgbmc'
-        time = int(sr/3)
-        for x in range(val):
-            if x == val-1:
-                events = dataset['events_ts']['poke_in']-1
-            else:
-                events = dataset['events_ts'][etsN[x]]
-            resps, ana_phase, finh, marks = inhDetection(breath, events, x_time,
-                                                          sr=sr)
-            expe[rat][ses][etsN[x]] = {'sniffs': resps, 'phase': ana_phase,
-                                        'first_inhalation': finh,
-                                        'marks': marks}
-            print(rat, ses, etsN[x], ': done')
-            
+def rastifyXneu(x_time, finh, marks, cell, odors, ax, tit):
+    pstime = ([x_time[finh+marks[1][0,:]]-.5,
+                        x_time[finh+marks[1][0,:]]+.5])
+    cols = '0rg0bcmy'
+    rastify = [((cell > pstime[0][i]) & (cell < pstime[1][i])).nonzero()[0]
+               for i in range(len(finh))]
+    ts = [cell[rastify[i]]-x_time[finh[i]+marks[1][0][i]]
+          for i in range(len(rastify))]
+    for y in range(len(finh)):
+        ax.plot(ts[y], np.zeros_like(ts[y])+y, cols[int(odors[y])]+'|')
+    ax.axis((-.504, .504, -.4, (len(ts)+.4)))
+    ax.plot(np.zeros(2), [-.4, (len(ts)+.4)], 'k', lw=.5)
+    ax.set_xticks(np.linspace(-.5,.5, num=5))
+    ax.set_yticks(np.linspace(0,len(ts), num=5).astype(int))
+    ax.set_title(tit)
+    return ax
 
 
+def main_rast(pdfName='Rasters-rat_ses_neuXevent.pdf'):
+    file='data_11.AUG.16.h5'
+    plt.ioff()
+    pp = PdfPages(pdfName)
+    for rat in sorted(RDC.keys()):
+        #expe[rat] = {}
+        for ses in sorted(RDC[rat]):
+            #expe[rat][ses] = {}
+            dataset = loadData(rat, ses, file=file)
+            etsN = ['poke_in', 'odor_on', 'poke_out', '1.8SBPi']
+            x_time = dataset['data']['x_time']
+            t0 = x_time[0]
+            breath = dataset['data']['respiration']
+            sr = dataset['data']['samp_rate']
+            odors = dataset['data']['odor_id']
+            val = len(etsN)
+            datas = {}
+            for x in range(val):
+                if x == val-1:
+                    events = dataset['events_ts']['poke_in']
+                    events = events-1.8
+                else:
+                    events = dataset['events_ts'][etsN[x]]
+                resps, ana_phase, finh, inhs, marks = \
+                    inhDetection(breath, events, x_time, sr=sr, ratio=.5)
+                datas[etsN[x]] = {'finhs': finh, 'marks': marks}
+                print(rat, ses, etsN[x], ': done')
+            for x in range(len(RDC[rat][ses])):
+                neu = RDC[rat][ses][x]
+                cell = loadCellTS(rat, ses, neu)
+                titF = rat+' '+ses+' '+neu
+                fig = plt.figure(titF, figsize=(15.69, 8.27))
+                for y in range(val):
+                    ax = fig.add_subplot(1,4,y+1)
+                    tit = etsN[y]
+                    finh = datas[tit]['finhs']
+                    marks = datas[tit]['marks']
+                    axb = rastifyXneu(x_time, finh, marks, cell, odors, ax, tit)
+                    if (y > 0):
+                        axb.set_yticklabels([])
+                fig.suptitle(titF, fontsize=18)
+                fig.savefig(pp, format='pdf')
+                plt.close()
+    pp.close()
+                        

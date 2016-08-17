@@ -251,7 +251,7 @@ def DBPN(signal, low=0.1, high=30, order=3, sr=1893.9393939393942, norm='ZS'):
 def loadData(rat, ses, file='data_10.AUG.16.h5'):
     fpa = '/Users/soyunkope/Documents/scriptkidd/git/phaseImGoingThrough/'
     fpd = 'data/'
-    dfName = fpa+fpd+'data_10.AUG.16.h5'
+    dfName = fpa+fpd+file
     dfile = h5py.File(dfName, mode='r')
     dd = ['time_start', 'samp_rate', 'cutoff_gaussF', 'duration',
           'respiration']
@@ -268,26 +268,69 @@ def loadData(rat, ses, file='data_10.AUG.16.h5'):
 
 
 def inhDetection(breath, events, x_time, sr=1893.9393939393942,
-                 low=1, high=30, order=3, norm='ZS', frac=5, ratio=1):
+                 low=1, high=30, order=3, nmeth='ZS', frac=5, ratio=1):
     """
     Detects first inhalation after timestamps. Gives the detrended
     bandpassed and normalized breathing sec/ratio arround the event,
     the analytic phase of the breathing for further analysis, and
-    the indices of used for everything.
+    the indices used for everything in breath scale.
+    If the odor was presented during the bregining of the inhalation,
+    consider that as the first inhalation. 
+    
+    Parameters
+    ----------
+    
+    breath : array, one dimension
+        Breathing frequency to analyze
+
+    events : array, one dimension
+        Timestamps of the events of interet
+
+    x_time : array, one dimension
+        Sesion time dimension
+    
+    sr : float
+        Sampling rate of the breathing frequency
+    
+    low : float
+        Lower bound for the bandpass filter
+
+    high : float
+        Higher bound for the bandpass filter
+
+    order : int
+        Order of the bandpass filter
+
+    nmeth : string
+        Type of normalization to use after the bandpass
+
+    frac : float
+        (frac-1)*pi/frac defines the begining of the inhalation
+
+    ratio : float
+        How much indices around the event to analyze,
+        (ratio 1) = (1 sec)
+    
+    Returns:
+    -------
+    
+    
     """
     ev0 = int(sr/ratio)
-    ev_ndx = np.array([(x_time >= i).nonzero()[0].min() for i in events])
+    dt = 1/sr
+    t0 = x_time[0]
+    ev_ndx = np.array(((events-t0)/dt).astype(int))
     pe_ndx = np.array([ev_ndx-ev0, ev_ndx+ev0])
     sniff = np.array([breath[i:j] for i, j in zip(pe_ndx[0], pe_ndx[1])])
     resps = np.array([DBPN(sn, low=low, high=high, order=order, sr=sr,
-                           norm=norm) for sn in sniff])
+                           norm=nmeth) for sn in sniff])
     ana_sig = hilbert(resps)
-    ana_phase = np.arctan2(ana_sig.imag, ana_sig.real) 
+    ana_phase = np.arctan2(ana_sig.imag, ana_sig.real)
     finh = np.zeros_like(ev_ndx)
     thresh = -(np.pi/frac)*(frac-1)
     for i in range(len(ev_ndx)):
         if ana_phase[i][ev0] < thresh:
-            finh[i] = ev0
+            finh[i] = (ana_phase[i][:ev0] < thresh).nonzero()[0].max()
         else:
             finh[i] = (ana_phase[i][ev0:] < thresh).nonzero()[0].min()+ev0
     return resps, ana_phase, finh, [ev_ndx, pe_ndx]
@@ -367,9 +410,9 @@ def figInhwaves(marks, breath, tit):
     return fig
 
 # Load RDC from rat_day_cells.py !!!
-
-pp = PdfPages('rat_ses-INH_3SBPi.pdf')
+pp = PdfPages(pdfName)
 file='data_11.AUG.16.h5'
+plt.ioff()
 for rat in sorted(RDC.keys()):
     for ses in sorted(RDC[rat]):
         dataset = loadData(rat, ses, file=file)
@@ -389,18 +432,60 @@ for rat in sorted(RDC.keys()):
                 events = events-1.8
             else:
                 events = dataset['events_ts'][etsN[x]]
-            resps, ana_phase, finh, marks = inhDetection(breath, events, x_time,
-                                                          sr=sr, ratio=.5)
+            resps, ana_phase, finh, marks = inhDetection(breath,
+                                                         events, x_time,
+                                                         sr=sr, ratio=.5)
             [axs[x].plot(r[i-time:i+time], cols[x], alpha=.25)
              for r, i in zip(resps, finh)]
             axs[x].set_title(etsN[x])
             axs[x].axis('off')
         fig.suptitle(fTit, fontsize=15)
-        fig.tight_layout(rect=(0,0,1,.97))
+        fig.tight_layout(rect=(0, 0, 1, .97))
         fig.savefig(pp, format='pdf')
         print(fTit, ': done')
         plt.close()
 pp.close()
+
+def main_InhalationLocked(pdfName='rat_ses-INH_1.8SBPi.pdf'):
+    '''
+    Creates the PDF of the respiration locked to first inhalations for
+    some behavioral events.
+    '''
+    pp = PdfPages(pdfName)
+    file='data_11.AUG.16.h5'
+    plt.ioff()
+    for rat in sorted(RDC.keys()):
+        for ses in sorted(RDC[rat]):
+            dataset = loadData(rat, ses, file=file)
+            etsN = ['poke_in', 'odor_on', 'poke_out', 'water_in', '1.8SBPi'] 
+            x_time = dataset['data']['x_time']
+            breath = dataset['data']['respiration']
+            sr = dataset['data']['samp_rate']
+            fTit = rat+' '+ses
+            fig = plt.figure(fTit, figsize=(20, 7))
+            val = len(etsN)
+            axs = [fig.add_subplot(1, val, i+1) for i in range(val)]
+            cols = 'rgbmc'
+            time = int(sr/3)
+            for x in range(val):
+                if x == val-1:
+                    events = dataset['events_ts']['poke_in']
+                    events = events-1.8
+                else:
+                    events = dataset['events_ts'][etsN[x]]
+                resps, ana_phase, finh, marks = inhDetection(breath,
+                                                             events, x_time,
+                                                             sr=sr, ratio=.5)
+                [axs[x].plot(r[i-time:i+time], cols[x], alpha=.25)
+                 for r, i in zip(resps, finh)]
+                axs[x].set_title(etsN[x])
+                axs[x].axis('off')
+            fig.suptitle(fTit, fontsize=15)
+            fig.tight_layout(rect=(0, 0, 1, .97))
+            fig.savefig(pp, format='pdf')
+            print(fTit, ': done')
+            plt.close()
+    pp.close()
 """
 
 # rat = "f4"
