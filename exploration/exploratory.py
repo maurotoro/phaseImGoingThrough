@@ -409,8 +409,9 @@ def figInhwaves(marks, breath, tit):
     fig.tight_layout(rect=(0,0,1,.97))
     return fig
 
+
 # Load RDC from rat_day_cells.py !!!
-pp = PdfPages(pdfName)
+pp = PdfPages('pppp.pdf')
 file='data_11.AUG.16.h5'
 plt.ioff()
 for rat in sorted(RDC.keys()):
@@ -492,7 +493,7 @@ def main_InhalationLocked(pdfName='rat_ses-INH_1.8SBPi.pdf'):
 # ses = "05_31_06b"
 # neu = RDC[rat][ses][0]
 # To create the hdf5 file, beautiful hdf5...
-file = h5py.File('../data/data_11.AUG.16.h5', 'a')
+file = h5py.File('../data/data_31.AUG.16.h5', 'a')
 for rat in sorted(RDC.keys()):
     rdata = file.create_group(rat)
     for ses in sorted(RDC[rat].keys()):
@@ -505,6 +506,7 @@ for rat in sorted(RDC.keys()):
         dur = L/sr
         x_time = np.linspace(t0, dur+t0, num=L)
         freq = 30
+        breathO = rd.data.breath
         breath = gaussFil(rd.data.breath, sr=sr, freq=freq)
         breath = normalize(breath)
         valTrials = np.array(np.nonzero(~np.isnan(sum((rd.events.OdorPokeIn,
@@ -524,7 +526,7 @@ for rat in sorted(RDC.keys()):
         trialXodor = [np.nonzero(odorValveID == odor)[0] for odor in odors]
         # Create data Structure:
         rsdata = {'time_start': t0, 'samp_rate': sr, 'duration': dur,
-                  'respiration': breath, "cutoff_gaussF": 30,
+                  'respiration': breathO, "cutoff_gaussF": 30,
                   'odor_id': odorValveID, 'water_id': waterValveID,}
         events_TS = {'trials_start': trials_TS, 'poke_in': pokeIn_TS,
                      'odor_on': odorON_TS, 'poke_out': pokeOut_TS,

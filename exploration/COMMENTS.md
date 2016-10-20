@@ -7,3 +7,9 @@
     before each behavioral event
 11-Aug-2016:
     3 sec peri event works beautiful, now have to create a way of doing the psth's
+
+PorotoMeet: Evauate lattice plot for random forest regression, linear classifier,
+             Classify neurons respecto to inahaliton, 
+             Predict odor or desition by classification, regression logit
+             ??? Get crazzy
+            USe log linear models to look at interaction between neurons and inhalation and relation
