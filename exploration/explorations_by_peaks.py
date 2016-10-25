@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-Created on Fri Aug 26 15:24:03 2016
+Created on Tue 25 Oct 15:24:03 2016
 
 Looking for ways of only keeping the good cycles or quantify the quality
 of the segmentation
@@ -208,14 +208,13 @@ def loadData(rat, ses, file='data_11.AUG.16.h5'):
     return dataset
 
 
-def inhDetection(breath, events, x_time, sr=1893.9393939393942,
-                 low=1, high=30, order=3, nmeth='ZS', frac=5, ratio=3):
+def inhDetXPeaks(breath, events, x_time, sr=1893.9393939393942,
+                 low=1, high=30, order=3, nmeth='ZS', frac=2, ratio=.75):
     """
     Detects first inhalation after timestamps. Gives the detrended
     bandpassed and normalized breathing sec/ratio arround the event,
-    the analytic phase of the breathing for further analysis, and
-    the indices used for everything in breath scale.
-    If the odor was presented during the bregining of the inhalation,
+    looks for local minimas and maximas to detect inhalations and exhalations
+    If the odor was presented during the begining of the inhalation,
     consider that as the first inhalation.
 
     Parameters
@@ -246,11 +245,10 @@ def inhDetection(breath, events, x_time, sr=1893.9393939393942,
         Type of normalization to use after the bandpass
 
     frac : float
-        (frac-1)*pi/frac defines the begining of the inhalation
+        how much of the inhalation to consider 1/frac
 
     ratio : float
-        How much indices around the event to analyze,
-        (ratio 1) = (1 sec); (ratio 2) = (.5 sec)
+        How much indices around the event to analyze, in secs
 
     Returns:
     -------
@@ -268,115 +266,63 @@ def inhDetection(breath, events, x_time, sr=1893.9393939393942,
 
     cycles : ndarray x 3
         Previous, actual and posterior cycles with respect to the first
-        inhalation after behavioral event
+        inhalation after behavioral event, each cycle is inhalation,
+        exhalation and next inhalation begin.
 
     marks : ndarray
         The behavioral event indices and the start and stop indices
         of the respirations.
     """
-    ev0 = int(sr/ratio)
+    ev0 = round(sr*ratio)
     t0 = x_time[0]
     ev_ndx = np.array(((events-t0)*sr).astype(int))
     pe_ndx = np.array([ev_ndx-ev0, ev_ndx+ev0])
     sniff = np.array([breath[i:j] for i, j in zip(pe_ndx[0], pe_ndx[1])])
     resps = np.array([DBPN(sn, low=low, high=high, order=order, sr=sr,
                            norm=nmeth) for sn in sniff])
-    ana_sig = hilbert(resps)
-    ana_phase = np.arctan2(ana_sig.imag, ana_sig.real)
     finh = np.zeros_like(ev_ndx)
-    inhs = [None]*len(ev_ndx)
-    thresh = -(np.pi/frac)*(frac-1)
+    cycles = np.zeros((len(ev_ndx), 3, 3))
     for i in range(len(ev_ndx)):
-        inhs[i] = np.array((np.hstack((0, np.diff(ana_phase[i])))\
-                            < -np.pi).nonzero()[0])
-        if ana_phase[i][ev0] < thresh:
-            vfin = (ana_phase[i][:ev0] < thresh).nonzero()[0].max()
-            finh[i] = inhs[i][(inhs[i]-vfin <= 0).nonzero()[0].max()]
+        mxr, mnr = peakdetect(resps[i], lookahead=round(sr/high))
+        mxi = mxr[:, 0]
+        mni = mnr[:, 0]
+        if mxi.size != mni.size:
+            if mxi.size > mni.size:
+                mxi = mxi[:-1]
+            elif mni.size > mxi.size:
+                mni = mni[:-1]
+        thresh = abs((mxi-mni).mean()/frac)
+        dist_evin = mni-ev0
+        virt_finh = (dist_evin < 0).nonzero()[0].max()
+        if abs(dist_evin[virt_finh]) < thresh:
+            fip = virt_finh
         else:
-            vfin = (ana_phase[i][ev0:] < thresh).nonzero()[0].min()+ev0
-            finh[i] = inhs[i][(inhs[i]-vfin >= 0).nonzero()[0].min()]
-    finhATinh = np.hstack([(inhs[i] == finh[i]).nonzero()[0]
-                           for i in range(len(finh))])
-    cycles = [[[inhs[i][finhATinh[i]-1], finh[i]],
-               [finh[i], inhs[i][finhATinh[i]+1]],
-               [inhs[i][finhATinh[i]+1], inhs[i][finhATinh[i]+2]]]
-              for i in range(len(finh))]
-    cycles = np.array(cycles)
+            fip = virt_finh+1
+        if mxi[fip] > mni[fip]:
+            cycles[i] = np.array([[mni[fip-1], mxi[fip-1], mni[fip]],
+                                  [mni[fip], mxi[fip], mni[fip+1]],
+                                  [mni[fip+1], mxi[fip+1], mni[fip+2]]])
+            finh[i] = mni[fip]
+        else:
+            cycles[i] = np.array([[mni[fip-1], mxi[fip], mni[fip]],
+                                  [mni[fip], mxi[fip+1], mni[fip+1]],
+                                  [mni[fip+1], mxi[fip+2], mni[fip+2]]])
+            finh[i] = mni[fip]
     marks = [ev_ndx, pe_ndx]
-    return resps, ana_phase, finh, cycles, marks
+    return resps, finh, cycles, marks
 
 
-def cycleValuation(ana_phase, cycles):
-    """
-    Evaluation of the before, during and after event cycles. Given the
-    analytic phases and detected cycles, look if there is some change in the
-    direction of the derivative of the phase, as a proxy for counting more
-    than one inhalation.
-
-    Parameters
-    ----------
-
-    ana_phase : ndarray
-        Colection of analytic phases
-
-    cycles : 3xndarray
-        Indices of the previous, proper and posterior inhalations
-
-    Returns
-    -------
-
-    valCycles : array
-        Indices of the cycles that have only one inh-exh on the,
-
-    score : float
-        Godness of the cycles detected, a value between 0-1, if lower than
-        .9, do not touch that!
-    """
-    dPhase = np.array([np.hstack([(np.diff(ana_phase[i][cycles[i, j, 0]:\
-                                                        cycles[i, j, 1]]) < 0).nonzero()[0]
-                               for j in range(3)])
-                        for i in range(len(cycles))])
-    valCycles = nonzero(([dPhase[i].size == 0
-                          for  i in range(len(dPhase))]))[0]
-    score = valCycles.size/len(dPhase)
-    return valCycles, score
-
-
-def periStimCycleTBins(x_time, ana_phase, finh, cycles, marks, nbins=12):
-    """
-
-    """
-    exh = [[(ana_phase[i][cycles[i, j, 0]:cycles[i, j, 1]] > 0).nonzero()[0][0]
-            for j in range(3)]
-           for i in range(len(finh))]
-    exh = np.array(exh)
-    num = nbins+1
-    cycleB = np.array([cycles[:, 0, 0],
-                       cycles[:, 0, 0]+exh[:, 0],
-                       cycles[:, 0, 1]])+marks[1][0]
-    cycleN = np.array([cycles[:, 1, 0],
-                       cycles[:, 1, 0]+exh[:, 1],
-                       cycles[:, 1, 1]])+marks[1][0]
-    cycleA = np.array([cycles[:, 2, 0],
-                       cycles[:, 2, 0]+exh[:, 2],
-                       cycles[:, 2, 1]])+marks[1][0]
-    # Make the TS for the bins of inhalation and exhalation in the diff cycles
-    cycleB_TS = np.array([[np.linspace(x_time[cycleB][:, i][0],
-                                       x_time[cycleB][:, i][1], num=num),
-                           np.linspace(x_time[cycleB][:, i][1],
-                                       x_time[cycleB][:, i][2], num=num)]
-                          for i in range(len(finh))])
-    cycleN_TS = np.array([[np.linspace(x_time[cycleN][:, i][0],
-                                       x_time[cycleN][:, i][1], num=num),
-                           np.linspace(x_time[cycleN][:, i][1],
-                                       x_time[cycleN][:, i][2], num=num)]
-                          for i in range(len(finh))])
-    cycleA_TS = np.array([[np.linspace(x_time[cycleA][:, i][0],
-                                       x_time[cycleA][:, i][1], num=num),
-                           np.linspace(x_time[cycleA][:, i][1],
-                                       x_time[cycleA][:, i][2], num=num)]
-                          for i in range(len(finh))])
+def psCycleTBins(x_time, cycles, marks, nbins=10):
+    cycles_in = np.array([(cycles[i]+marks[1][0, i]).astype('int')
+                         for i in range(len(marks[0]))])
+    prevC, currC, nextC = [cycles_in[:, i, :] for i in range(3)]
+    cycleB_TS, cycleN_TS, cycleA_TS = [[np.array(
+        [np.linspace(x_time[cycle[i, 0]], x_time[cycle[i, 1]], num=nbins+1),
+         np.linspace(x_time[cycle[i, 1]], x_time[cycle[i, 2]], num=nbins+1)])
+                 for i in range(len(marks[0]))]
+        for cycle in [prevC, currC, nextC]]
     return cycleB_TS, cycleN_TS, cycleA_TS
+
 
 
 def PSTH_phase(cycle_TS, cell, ret='xTrial'):
@@ -536,7 +482,7 @@ TODO: Make inhDet to only make one hilbert over breath to not fuck the filter
 
 
 def psthDatify(dict, RDC, file='data_11.AUG.16.h5', low=1.5,
-               high=30, frac=6, etsN=('poke_in', 'odor_on'),
+               high=30, frac=2, etsN=('poke_in', 'odor_on'),
                ratio=.45, nbins=6, order=3):
     """
     Kind of a main(), creates data dictionaries that could be usefull
@@ -560,24 +506,16 @@ def psthDatify(dict, RDC, file='data_11.AUG.16.h5', low=1.5,
             odors = dataset['data']['odor_id']
             val = len(etsN)
             for x in range(val):
-#                if x == val-1:
-#                    events = dataset['events_ts']['poke_in']
-#                    events = events-SBPi
-#                else:
                 events = dataset['events_ts'][etsN[x]]
-                resps, ana_phase, finh, cycles, marks = \
-                    inhDetection(breath, events, x_time, low=low, frac=frac,
+                resps, finh, cycles, marks = \
+                    inhDetXPeaks(breath, events, x_time, low=low, frac=frac,
                                  sr=sr, ratio=ratio, order=order)
-                valCycles, score = cycleValuation(ana_phase, cycles)
                 cycleB_TS, cycleN_TS, cycleA_TS =\
-                    periStimCycleTBins(x_time, ana_phase, finh,
-                                       cycles, marks, nbins=nbins)
+                    psCycleTBins(x_time, cycles, marks, nbins=nbins)
                 data[rat][ses][etsN[x]] = {}
                 data[rat][ses][etsN[x]]['inh'] = {'finhs': finh,
                                                   'marks': marks,
-                                                  'cycles': cycles,
-                                                  'validCycles': valCycles,
-                                                  'cycleScore': score}
+                                                  'cycles': cycles}
                 data[rat][ses][etsN[x]]['cycles'] = {'A_Before': cycleB_TS,
                                                      'B_Actual': cycleN_TS,
                                                      'C_After': cycleA_TS}
@@ -628,12 +566,11 @@ def cherry_plotsT(RDC_d, file='data_11.AUG.16.h5', low=1, high=30, frac=6,
                     events = events-SBPi
                 else:
                     events = dataset['events_ts'][etsN[x]]
-                resps, ana_phase, finh, cycles, marks = \
-                    inhDetection(breath, events, x_time, low=low, frac=frac,
+                resps, finh, cycles, marks = \
+                    inhDetXPeaks(breath, events, x_time, low=low, frac=frac,
                                  sr=sr, ratio=ratio, order=order)
                 cycleB_TS, cycleN_TS, cycleA_TS =\
-                    periStimCycleTBins(x_time, ana_phase, finh, cycles, marks,
-                                       nbins=nbins)
+                    psCycleTBins(x_time, cycles, marks, nbins=nbins)
                 titF = rat+' '+ses
                 figR = plt.figure(titF, figsize=(25, 19))
                 axPSR = figR.add_subplot(val, 4, 1+(x*4))
