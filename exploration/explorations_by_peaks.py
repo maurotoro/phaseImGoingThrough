@@ -13,13 +13,13 @@ If no licence on the containing folder, asume GPLv3+CRAPL
 """
 import numpy as np
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d import Axes3D
+# from mpl_toolkits.mplot3d import Axes3D
 from peakdetect import peakdetect
 import datetime as dt
 from matplotlib.backends.backend_pdf import PdfPages
 import h5py
 import scipy.io as sio
-from scipy.signal import hilbert, butter, filtfilt, gaussian
+from scipy.signal import butter, filtfilt, gaussian
 from scipy.stats import linregress
 
 
@@ -273,7 +273,7 @@ def inhDetXPeaks(breath, events, x_time, sr=1893.9393939393942,
         The behavioral event indices and the start and stop indices
         of the respirations.
     """
-    ev0 = round(sr*ratio)
+    ev0 = int(round(sr*ratio))
     t0 = x_time[0]
     ev_ndx = np.array(((events-t0)*sr).astype(int))
     pe_ndx = np.array([ev_ndx-ev0, ev_ndx+ev0])
@@ -283,7 +283,7 @@ def inhDetXPeaks(breath, events, x_time, sr=1893.9393939393942,
     finh = np.zeros_like(ev_ndx)
     cycles = np.zeros((len(ev_ndx), 3, 3))
     for i in range(len(ev_ndx)):
-        mxr, mnr = peakdetect(resps[i], lookahead=round(sr/high))
+        mxr, mnr = peakdetect(resps[i], lookahead=int(round(sr/high)))
         mxi = mxr[:, 0]
         mni = mnr[:, 0]
         if mxi.size != mni.size:
@@ -324,7 +324,6 @@ def psCycleTBins(x_time, cycles, marks, nbins=10):
     return cycleB_TS, cycleN_TS, cycleA_TS
 
 
-
 def PSTH_phase(cycle_TS, cell, ret='xTrial'):
     ntrials, ie, nbins = np.shape(cycle_TS)
     inh = np.array([[sum((cell > cycle_TS[j][0][i]) &\
@@ -341,6 +340,28 @@ def PSTH_phase(cycle_TS, cell, ret='xTrial'):
         psth = np.hstack((inh, exh))
     return psth
 
+
+def PSTH_phaseb(cycle_TS, cell, ret='xTrial'):
+    ntrials, ie, nbins = np.shape(cycle_TS)
+    inh = []
+    exh = []
+    cA = np.range((cell >= cycle_TS[0].min()).nonzero()[0].min()-1,
+                  (cell <= cycle_TS[-1].max()).nonzero()[0].max()+1)
+    for j in range(ntrials):
+        cran = [cycle_TS[j].min(), cycle_TS[j].max()]
+        cT = np.range((cell[cA] >= cran[0]).nonzero()[0].min()-1,
+                      (cell[cA] <= cran[1]).nonzero()[0].max()+1)
+        for i in range(nbins-1):
+            inh.append(sum((cell[cT] > cycle_TS[j][0][i]) &\
+                           (cell[cT] < cycle_TS[j][0][i+1])))
+            exh.append(sum((cell[cT] > cycle_TS[j][1][i]) &\
+                           (cell[cT] < cycle_TS[j][1][i+1])))
+    inh, exh = [np.array(arr) for arr in [inh, exh]]
+    if ret == 'xSes':
+        psth = np.hstack((sum(inh, axis=0), sum(exh, axis=0)))
+    elif ret == 'xTrial':
+        psth = np.hstack((inh, exh))
+    return psth
 
 def circDatify(psth):
     bins = np.shape(psth)[-1]
@@ -473,17 +494,10 @@ def rastifyXneu_NINO(x_time, finh, marks, cell, ax, tit):
     return ax
 
 
-"""
-TODO: Make inhDet to only make one hilbert over breath to not fuck the filter
-      Compare resulting order with nowish....should be, at least, less
-      complicated. Also, meassure the fucking amount of noise in the cycles
 
-"""
-
-
-def psthDatify(dict, RDC, file='data_11.AUG.16.h5', low=1.5,
+def psthDatify(RDC, file='data_11.AUG.16.h5', low=1.5,
                high=30, frac=2, etsN=('poke_in', 'odor_on'),
-               ratio=.45, nbins=6, order=3):
+               ratio=1.5, nbins=10, order=3):
     """
     Kind of a main(), creates data dictionaries that could be usefull
     eventually...
@@ -503,7 +517,6 @@ def psthDatify(dict, RDC, file='data_11.AUG.16.h5', low=1.5,
             x_time = dataset['data']['x_time']
             breath = dataset['data']['respiration']
             sr = dataset['data']['samp_rate']
-            odors = dataset['data']['odor_id']
             val = len(etsN)
             for x in range(val):
                 events = dataset['events_ts'][etsN[x]]
@@ -532,6 +545,7 @@ def psthDatify(dict, RDC, file='data_11.AUG.16.h5', low=1.5,
                     psth = np.hstack([PSTH_phase(cycle_TS, cell, ret='xTrial')
                                       for cycle_TS in cycles])
                     data[rat][ses][etsN[x]]['neurons'].update({neu: psth})
+                    print('\t', etsN[x], neu)
     return data
 
 
