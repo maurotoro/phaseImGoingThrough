@@ -11,6 +11,7 @@ If no licence on the containing folder, asume GPLv3+CRAPL
 import numpy as np
 import matplotlib.pyplot as plt
 import datetime as dt
+from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.backends.backend_pdf import PdfPages
 import h5py
 import scipy.io as sio
@@ -93,7 +94,7 @@ def circDatify(psth):
     bins = np.shape(psth)[-1]
     rad = np.arange(0, 2*np.pi, (2*np.pi)/bins)
     d = rad[1]
-    w = sum(psth, axis=0)
+    w = np.sum(psth, axis=0)
     return rad, w, d
 
 
@@ -152,7 +153,7 @@ def rastifyXneu_NOD(x_time, finh, marksI, cell, ax, tit):
     ax.axis((-.504, .504, -.4, (len(ts)+.4)))
     ax.plot(np.zeros(2), [-.4, (len(ts)+.4)], 'k', lw=.5)
     ax.set_xticks(np.linspace(-.5, .5, num=5))
-    ax.set_yticks(np.linspace(0, len(ts), num=5).astype(int))
+    ax.set_yticks(np.linspace(0, len(ts), num=5).astype('int'))
     ax.set_title(tit)
     return ax
 
@@ -171,14 +172,40 @@ def rastifyXneu_NINO(x_time, finh, marksO, cell, ax, tit):
     ax.axis((-.504, .504, -.4, (len(ts)+.4)))
     ax.plot(np.zeros(2), [-.4, (len(ts)+.4)], 'k', lw=.5)
     ax.set_xticks(np.linspace(-.5, .5, num=5))
-    ax.set_yticks(np.linspace(0, len(ts), num=5).astype(int))
+    ax.set_yticks(np.linspace(0, len(ts), num=5).astype('int'))
     ax.set_title(tit)
+    return ax
+
+
+def plot_popPSTH(RDC_d, psth, ax, PER=.1, inter='none',
+                 event='poke_in', mark='current', sortMeth=[1]):
+    popP = getPSTH(RDC_d, psth, event, mark, 'psth')[:, 1:]
+    popS = getPSTH(RDC_d, psth, event, mark, 'sumary')
+    ndx = np.array(sorted(popS, key=lambda x: [x[i] for i in sortMeth])[:])
+    ndx = ndx[:, 0].astype('int')
+    pP = np.nan_to_num(np.vstack([i/i.max() for i in popP]))
+    y, x = np.shape(popP)
+    xtick = np.linspace(0, x, x-1)[:-1]
+    xlabs = np.linspace(0, 360, x-1).astype('int')[:-1]
+    if PER == 1:
+        ax.imshow(pP[ndx], aspect='auto', interpolation=inter)
+    else:
+        TP = int(np.ceil(y*PER))
+        ax.imshow(pP[ndx[-TP:]], aspect='auto', interpolation=inter)
+    ax.set_xticks(xtick)
+    ax.set_xticklabels(xlabs)
+    ax.set_ylabel('Neuron ID')
+    ax.set_xlabel('Angle')
     return ax
 
 
 def popPSTH(RDC_d, minN=50,
             hfile='data_11.AUG.16.h5',
             dfile='PSTH_All-07SEP16-10_Bins.data'):
+    """
+    Creates a population psth for each cell, organized by animal and ses
+    Also, saves some sumary statistics on it, [vStr, vDir, astd, skew, kurt]
+    """
     dataD = pk.load(open(dfile, 'rb'))
     psths = {}
     for rat in sorted(dataD.keys()):
@@ -191,30 +218,43 @@ def popPSTH(RDC_d, minN=50,
             ooInhs = dataD[rat][ses]['odor_on']['inh']
             valTrials = np.union1d(piInhs['validCycles'],
                                    ooInhs['validCycles'])
-            for event in ['poke_in', 'odor_on']:
-                psths[rat][ses][event] = {}
-                for neu in RDC_d[rat][ses]:
+            dataset = loadData(rat, ses)
+            psths[rat][ses]['odor_ids'] = dataset['data']['odor_id'][valTrials]
+            for neu in RDC_d[rat][ses]:
+                psths[rat][ses][neu] = {}
+                for event in ['poke_in', 'odor_on']:
+                    psths[rat][ses][neu][event] = {}
                     psth = dataD[rat][ses][event]['neurons'][neu][valTrials]
-                    psths[rat][ses][event][neu] = {}
-                    psths[rat][ses][event][neu]['psth'] = psth
+                    psths[rat][ses][neu][event]['psth'] = psth
                     L = int(np.shape(psth)[-1]/3)
-                    psths[rat][ses][event][neu]['bc'] = {}
+                    psths[rat][ses][neu][event]['bc'] = {}
                     for n in range(3):
                         rad, w, d = circDatify(psth[:, n*L:L*(n+1)])
                         if sum(w) <= (minN):
                             vStr, vDir, astd, skew, kurt = np.zeros(5)
                         else:
                             vStr, vDir, astd, skew, kurt = circvVals(rad, w, d)
-                        psths[rat][ses][event][neu]['bc'][str(n)] =\
+                        psths[rat][ses][neu][event]['bc'][str(n)] =\
                             {'psth': w,
                              'sumary': [vStr, vDir, astd, skew, kurt]}
+                    rad, w, d = circDatify(psth[:, L:L*2])
+                    if sum(w) <= (minN*2):
+                        vStr, vDir, astd, skew, kurt = np.zeros(5)
+                    else:
+                        vStr, vDir, astd, skew, kurt = circvVals(rad, w, d)
+                    psths[rat][ses][neu][event]['current'] = {'psth': w,
+                                                            'sumary': [vStr,
+                                                                       vDir,
+                                                                       astd,
+                                                                       skew,
+                                                                       kurt]}
                     rad, w, d = circDatify(np.vstack((psth[:, L:L*2],
                                                       psth[:, L*2:L*3])))
                     if sum(w) <= (minN*2):
                         vStr, vDir, astd, skew, kurt = np.zeros(5)
                     else:
                         vStr, vDir, astd, skew, kurt = circvVals(rad, w, d)
-                    psths[rat][ses][event][neu]['after'] = {'psth': w,
+                    psths[rat][ses][neu][event]['after'] = {'psth': w,
                                                             'sumary': [vStr,
                                                                        vDir,
                                                                        astd,
@@ -227,7 +267,7 @@ def popPSTH(RDC_d, minN=50,
                         vStr, vDir, astd, skew, kurt = np.zeros(5)
                     else:
                         vStr, vDir, astd, skew, kurt = circvVals(rad, w, d)
-                    psths[rat][ses][event][neu]['all'] = {'psth': w,
+                    psths[rat][ses][neu][event]['all'] = {'psth': w,
                                                           'sumary': [vStr,
                                                                      vDir,
                                                                      astd,
@@ -240,7 +280,7 @@ def popPSTH(RDC_d, minN=50,
 def getPSTH(RDCD, psthB, event, mark, val):
     """
     event = ['poke_in', 'odor_on']
-    mark = ['after', 'all', 'by_cycle']
+    mark = ['current', 'after', 'all', 'by_cycle']
     val = ['psth', 'sumary']
     """
     pop = []
@@ -249,11 +289,13 @@ def getPSTH(RDCD, psthB, event, mark, val):
         for ses in sorted(RDCD[rat].keys()):
             for neu in RDCD[rat][ses]:
                 if mark == 'by_cycle':
-                        data = np.hstack(
-                                         [psthB[rat][ses][event][neu]['bc']\
-                                          [str(n)][val] for n in range(3)])
+                    # print('not implemented yet...\n8O()')
+                    # pass
+                    data = np.hstack(
+                                     [psthB[rat][ses][neu][event]['bc']\
+                                      [str(n)][val] for n in range(3)])
                 else:
-                    data = psthB[rat][ses][event][neu][mark][val]
+                    data = psthB[rat][ses][neu][event][mark][val]
                 newNeu = np.hstack((int(indx), data))
                 pop.append(newNeu)
                 indx += 1
@@ -263,6 +305,24 @@ def getPSTH(RDCD, psthB, event, mark, val):
     pop[popN, 1:] = np.zeros(L-1)
     return pop
 
+
+def psth_by_odor(RDC_d, psth):
+    psthXodor = {}
+    for rat in sorted(RDC_d.keys()):
+        if rat == 'VALS':
+            continue
+        psthXodor[rat] = {}
+        for ses in sorted(RDC_d[rat].keys()):
+            odor_ids = psth[rat][ses]['odor_ids']
+            psthXodor[rat][ses] = {}
+            for neu in RDC_d[rat][ses]:
+                psthXodor[rat][ses][neu] = {}
+                for od in np.unique(odor_ids):
+                    indx = (odor_ids == od).nonzero()[0]
+                    psthXodor[rat][ses][neu][str(int(od))] =\
+                        psth[rat][ses][neu]['odor_on']['psth'][indx, 10:]
+
+    return psthXodor
 
 def valTrialsPDF(dataD, RDC_d, hfile='data_11.AUG.16.h5'):
     date = dt.date.today().strftime('%Y_%m_%d')
@@ -323,8 +383,21 @@ def valTrialsPDF(dataD, RDC_d, hfile='data_11.AUG.16.h5'):
     pOo.close()
 
 """
-psth = popPSTH(RDC, minN=10, dfile='PSTH_All-07SEP16-18_Bins.data')
-popP = getPSTH(RDC, psth, 'poke_in', 'all', 'psth')
-pop = getPSTH(RDC, psth, 'poke_in', 'all', 'sumary')
-ndx = np.array(sorted(pop, key=lambda x: (x[1], x[2]))[:])[:,0].astype(int)
+ppath = '/Users/soyunkope/Documents/scriptkidd/git/phaseImGoingThrough/'
+fpath = 'data/explorations/PSTH_All-07SEP16-10_Bins.data'
+dfile = ppath+fpath
+psth = popPSTH(RDC, minN=10, dfile=dfile)
+
+fig = plt.figure(figsize=(22,12))
+ax = [fig.add_subplot(2,2,i+1) for i in range(4)]
+events = ['poke_in', 'odor_on']
+marks = ['current', 'after', 'all', 'by_cycle']
+
+ax[0] = plot_popPSTH(RDC, psth, ax[0], event=events[0], mark=marks[3], PER=1, sortMeth=[7], inter='kaiser')
+ax[1] = plot_popPSTH(RDC, psth, ax[1], event=events[0], mark=marks[3], PER=.1, sortMeth=[7], inter='kaiser')
+ax[2] = plot_popPSTH(RDC, psth, ax[2], event=events[1], mark=marks[3], PER=1, sortMeth=[7], inter='kaiser')
+ax[3] = plot_popPSTH(RDC, psth, ax[3], event=events[1], mark=marks[3], PER=.1, sortMeth=[7], inter='kaiser')
+fig.suptitle('Population PSTH All Cycles Event\n Sorted by Mean Angle', fontsize=15)
+
+
 """

@@ -6,16 +6,18 @@ from rat_day_cells import RDC
 
 rats = sorted(RDC.keys())
 rat = rats[0]
-ses = sorted(RDC[rat].keys())
+ses = sorted(RDC[rat].keys())[5]
 
-dataset = loadData(rat, ses[0])
-resp = dataset['data']['respiration']
+dataset = loadData(rat, ses)
+breath = dataset['data']['respiration']
 sr = dataset['data']['samp_rate']
 sampT = int(sr*60)
 cutoff = dataset['data']['cutoff_gaussF']
 poke_in = dataset['events_ts']['poke_in']
 odor_on = dataset['events_ts']['odor_on']
 poke_out = dataset['events_ts']['poke_out']
+x_time = dataset['data']['x_time']
+neu = RDC[rat][ses]
 
 dresp = np.hstack((0, np.diff(resp)))
 Udresp = (dresp >= 0).nonzero()[0]

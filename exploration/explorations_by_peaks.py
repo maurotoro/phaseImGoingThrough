@@ -13,7 +13,7 @@ If no licence on the containing folder, asume GPLv3+CRAPL
 """
 import numpy as np
 import matplotlib.pyplot as plt
-# from mpl_toolkits.mplot3d import Axes3D
+from mpl_toolkits.mplot3d import Axes3D
 from peakdetect import peakdetect
 import datetime as dt
 from matplotlib.backends.backend_pdf import PdfPages
@@ -131,6 +131,9 @@ def normalize(signal, method="ZS"):
         mn = np.min(signal)
         mx = np.max(signal)
         res = (signal)/(mx-mn)
+    elif method == "ZO":
+        mx = np.max(signal)
+        res = (signal)/mx
     elif method == "DF":
         res = signal/sum(signal)
     return res
@@ -335,7 +338,7 @@ def PSTH_phase(cycle_TS, cell, ret='xTrial'):
                      for i in range(nbins-1)]
                     for j in range(ntrials)])
     if ret == 'xSes':
-        psth = np.hstack((sum(inh, axis=0), sum(exh, axis=0)))
+        psth = np.hstack((np.sum(inh, axis=0), np.sum(exh, axis=0)))
     elif ret == 'xTrial':
         psth = np.hstack((inh, exh))
     return psth
@@ -358,10 +361,11 @@ def PSTH_phaseb(cycle_TS, cell, ret='xTrial'):
                            (cell[cT] < cycle_TS[j][1][i+1])))
     inh, exh = [np.array(arr) for arr in [inh, exh]]
     if ret == 'xSes':
-        psth = np.hstack((sum(inh, axis=0), sum(exh, axis=0)))
+        psth = np.hstack((np.sum(inh, axis=0), np.sum(exh, axis=0)))
     elif ret == 'xTrial':
         psth = np.hstack((inh, exh))
     return psth
+
 
 def circDatify(psth):
     bins = np.shape(psth)[-1]
