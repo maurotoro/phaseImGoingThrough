@@ -396,7 +396,9 @@ marks = ['current', 'after', 'all', 'by_cycle']
 
 sortMeth=[6]
 mark = marks[3]
-tit = 'Population PSTH All Cycles around Event\n (Sorted by vector strength during odor on)'
+ta = 'Population PSTH All Cycles around Event\n'
+tb =  (Sorted by vector strength during odor on)'
+tit = ta+tb
 popS = getPSTH(RDC, psth, events[1], mark, 'sumary')
 ndx = np.array(sorted(popS, key=lambda x: [x[i] for i in sortMeth])[:])
 ndx = ndx[:, 0].astype('int')
