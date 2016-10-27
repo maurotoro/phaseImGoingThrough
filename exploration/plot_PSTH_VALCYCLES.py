@@ -177,12 +177,15 @@ def rastifyXneu_NINO(x_time, finh, marksO, cell, ax, tit):
     return ax
 
 
-def plot_popPSTH(RDC_d, psth, ax, PER=.1, inter='none',
+def plot_popPSTH(RDC_d, psth, ax, PER=.1, inter='none', indx='none',
                  event='poke_in', mark='current', sortMeth=[1]):
     popP = getPSTH(RDC_d, psth, event, mark, 'psth')[:, 1:]
-    popS = getPSTH(RDC_d, psth, event, mark, 'sumary')
-    ndx = np.array(sorted(popS, key=lambda x: [x[i] for i in sortMeth])[:])
-    ndx = ndx[:, 0].astype('int')
+    if indx == 'none':
+        popS = getPSTH(RDC_d, psth, event, mark, 'sumary')
+        ndx = np.array(sorted(popS, key=lambda x: [x[i] for i in sortMeth])[:])
+        ndx = ndx[:, 0].astype('int')
+    else:
+        ndx = indx
     pP = np.nan_to_num(np.vstack([i/i.max() for i in popP]))
     y, x = np.shape(popP)
     xtick = np.linspace(0, x, x-1)[:-1]
@@ -388,16 +391,32 @@ fpath = 'data/explorations/PSTH_All-07SEP16-10_Bins.data'
 dfile = ppath+fpath
 psth = popPSTH(RDC, minN=10, dfile=dfile)
 
-fig = plt.figure(figsize=(22,12))
-ax = [fig.add_subplot(2,2,i+1) for i in range(4)]
 events = ['poke_in', 'odor_on']
 marks = ['current', 'after', 'all', 'by_cycle']
 
-ax[0] = plot_popPSTH(RDC, psth, ax[0], event=events[0], mark=marks[3], PER=1, sortMeth=[7], inter='kaiser')
-ax[1] = plot_popPSTH(RDC, psth, ax[1], event=events[0], mark=marks[3], PER=.1, sortMeth=[7], inter='kaiser')
-ax[2] = plot_popPSTH(RDC, psth, ax[2], event=events[1], mark=marks[3], PER=1, sortMeth=[7], inter='kaiser')
-ax[3] = plot_popPSTH(RDC, psth, ax[3], event=events[1], mark=marks[3], PER=.1, sortMeth=[7], inter='kaiser')
-fig.suptitle('Population PSTH All Cycles Event\n Sorted by Mean Angle', fontsize=15)
+sortMeth=[6]
+mark = marks[3]
+tit = 'Population PSTH All Cycles around Event\n (Sorted by vector strength during odor on)'
+popS = getPSTH(RDC, psth, events[1], mark, 'sumary')
+ndx = np.array(sorted(popS, key=lambda x: [x[i] for i in sortMeth])[:])
+ndx = ndx[:, 0].astype('int')
 
+fig = plt.figure(figsize=(22,12))
+ax = [fig.add_subplot(2,2,i+1) for i in range(4)]
+
+ax[0] = plot_popPSTH(RDC, psth, ax[0], event=events[0], mark=mark, PER=1,
+                     sortMeth=sortMeth, inter='kaiser', indx=ndx)
+ax[1] = plot_popPSTH(RDC, psth, ax[1], event=events[0], mark=mark, PER=.1,
+                       sortMeth=sortMeth, inter='kaiser', indx=ndx)
+ax[2] = plot_popPSTH(RDC, psth, ax[2], event=events[1], mark=mark, PER=1,
+                    sortMeth=sortMeth, inter='kaiser', indx=ndx)
+ax[3] = plot_popPSTH(RDC, psth, ax[3], event=events[1], mark=mark, PER=.1,
+                      sortMeth=sortMeth, inter='kaiser', indx=ndx)
+
+fig.suptitle(tit, fontsize=15)
+tot = fig.text(.27, .91, 'ALL Neurons', fontsize=12)
+sub = fig.text(.7, .91, 'Upper 10% Neurons', fontsize=12)
+tpi = fig.text(.085, .73, 'Poke In', rotation=90, fontsize=15)
+too = fig.text(.085, .3, 'Odor On', rotation=90, fontsize=15)
 
 """
