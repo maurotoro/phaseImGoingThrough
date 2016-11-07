@@ -204,10 +204,13 @@ def plot_popPSTH(RDC_d, psth, ax, PER=.1, inter='none', indx='none',
 
 def popPSTH(RDC_d, minN=50,
             hfile='data_11.AUG.16.h5',
-            dfile='PSTH_All-07SEP16-10_Bins.data'):
+            dfile='PSTH_All-07SEP16-10_Bins.data',
+            percent=1, origin=0):
     """
     Creates a population psth for each cell, organized by animal and ses
     Also, saves some sumary statistics on it, [vStr, vDir, astd, skew, kurt]
+    Can take only percent of the trials with respect of origin direction,
+    0 from begining, 1 from end
     """
     dataD = pk.load(open(dfile, 'rb'))
     psths = {}
@@ -226,8 +229,18 @@ def popPSTH(RDC_d, minN=50,
             for neu in RDC_d[rat][ses]:
                 psths[rat][ses][neu] = {}
                 for event in ['poke_in', 'odor_on']:
+                    tTrials = len(valTrials)
+                    if percent != 1:
+                        sampP = int(round(tTrials*percent))
+                        if origin != 0:
+                            ran = np.arange(sampP)
+                        else:
+                            ran = np.linspace(0, sampP, num=sampP).astype('int')
+                    else:
+                        ran = np.arange(tTrials).astype('int')
                     psths[rat][ses][neu][event] = {}
-                    psth = dataD[rat][ses][event]['neurons'][neu][valTrials]
+                    psth = dataD[rat][ses][event]['neurons'][neu][valTrials][ran]
+                    tTrials, bins = np.shape(psth)
                     psths[rat][ses][neu][event]['psth'] = psth
                     L = int(np.shape(psth)[-1]/3)
                     psths[rat][ses][neu][event]['bc'] = {}
@@ -246,11 +259,11 @@ def popPSTH(RDC_d, minN=50,
                     else:
                         vStr, vDir, astd, skew, kurt = circvVals(rad, w, d)
                     psths[rat][ses][neu][event]['current'] = {'psth': w,
-                                                            'sumary': [vStr,
-                                                                       vDir,
-                                                                       astd,
-                                                                       skew,
-                                                                       kurt]}
+                                                              'sumary': [vStr,
+                                                                         vDir,
+                                                                         astd,
+                                                                         skew,
+                                                                         kurt]}
                     rad, w, d = circDatify(np.vstack((psth[:, L:L*2],
                                                       psth[:, L*2:L*3])))
                     if sum(w) <= (minN*2):
@@ -386,38 +399,44 @@ def valTrialsPDF(dataD, RDC_d, hfile='data_11.AUG.16.h5'):
     pOo.close()
 
 """
+Simple plot scheme:
+    Take the data, get a PSTH, and do some plots sorted to some event
+    SortMeth is allways related to summaries, and that array is:
+        CellN, VecStr, MeanAng, Skew, Kurt
+            Unless by_cycle, then is 1+5*3
+        
 ppath = '/Users/soyunkope/Documents/scriptkidd/git/phaseImGoingThrough/'
 fpath = 'data/explorations/PSTH_All-07SEP16-10_Bins.data'
 dfile = ppath+fpath
-psth = popPSTH(RDC, minN=10, dfile=dfile)
-
+psthFt = popPSTH(RDC, minN=10, dfile=dfile, percent=.25, origin=0)
+psthLt = popPSTH(RDC, minN=10, dfile=dfile, percent=.25, origin=1)
 events = ['poke_in', 'odor_on']
 marks = ['current', 'after', 'all', 'by_cycle']
 
-sortMeth=[6]
-mark = marks[3]
+sortMeth=[1]
+mark = marks[2]
 ta = 'Population PSTH All Cycles around Event\n'
-tb =  (Sorted by vector strength during odor on)'
+tb =  '(Sorted by vector strength during poke in)'
 tit = ta+tb
-popS = getPSTH(RDC, psth, events[1], mark, 'sumary')
+popS = getPSTH(RDC, psth, events[0], mark, 'sumary')
 ndx = np.array(sorted(popS, key=lambda x: [x[i] for i in sortMeth])[:])
 ndx = ndx[:, 0].astype('int')
 
 fig = plt.figure(figsize=(22,12))
 ax = [fig.add_subplot(2,2,i+1) for i in range(4)]
 
-ax[0] = plot_popPSTH(RDC, psth, ax[0], event=events[0], mark=mark, PER=1,
+ax[0] = plot_popPSTH(RDC, psthFt, ax[0], event=events[0], mark=mark, PER=.3,
                      sortMeth=sortMeth, inter='kaiser', indx=ndx)
-ax[1] = plot_popPSTH(RDC, psth, ax[1], event=events[0], mark=mark, PER=.1,
+ax[1] = plot_popPSTH(RDC, psthLt, ax[1], event=events[0], mark=mark, PER=.3,
                        sortMeth=sortMeth, inter='kaiser', indx=ndx)
-ax[2] = plot_popPSTH(RDC, psth, ax[2], event=events[1], mark=mark, PER=1,
+ax[2] = plot_popPSTH(RDC, psthFt, ax[2], event=events[1], mark=mark, PER=.3,
                     sortMeth=sortMeth, inter='kaiser', indx=ndx)
-ax[3] = plot_popPSTH(RDC, psth, ax[3], event=events[1], mark=mark, PER=.1,
+ax[3] = plot_popPSTH(RDC, psthLt, ax[3], event=events[1], mark=mark, PER=.3,
                       sortMeth=sortMeth, inter='kaiser', indx=ndx)
 
 fig.suptitle(tit, fontsize=15)
-tot = fig.text(.27, .91, 'ALL Neurons', fontsize=12)
-sub = fig.text(.7, .91, 'Upper 10% Neurons', fontsize=12)
+tot = fig.text(.27, .91, 'First 25%', fontsize=12)
+sub = fig.text(.7, .91, 'Last 25%', fontsize=12)
 tpi = fig.text(.085, .73, 'Poke In', rotation=90, fontsize=15)
 too = fig.text(.085, .3, 'Odor On', rotation=90, fontsize=15)
 
