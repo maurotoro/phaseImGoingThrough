@@ -1,0 +1,27 @@
+Bottleneck Distance log:
+bot_dist_128_01.npy
+  nouns = ALL
+  Embedings_D = 128
+  leafsize = 16
+  method = "neigh"
+  val = 50
+  scaling = 1
+  mel = 10
+  mD = 4
+  hcf = 2
+  mp = 0
+  RUNTIME:
+    CPU times: user 41min 25s, sys: 2.88 s, total: 41min 28s
+    Wall time: 41min 33s
+
+bot_dist_128_02.npy
+  nouns = ALL
+  Embedings_D = 128
+  leafsize = 100
+  method = "neigh"
+  val = 100
+  scaling = 1
+  mel = 10
+  mD = 4
+  hcf = 2
+  mp = 0
