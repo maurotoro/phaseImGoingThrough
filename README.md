@@ -7,6 +7,10 @@ TODO: Find good tests for circular variance, evaluate synchrony between sniffing
       More beautiful plots.
       Save data into .pickles? .hdf5? no more calculations each time...please...no more dumbing
 
+2018-04-19 Insight:
+  Maybe refactory every
+
+
 Distributed AS IS, it's your fault now.
 If no licence on the containing folder, asume GPLv3+CRAPL
 @author: Mauro Toro
